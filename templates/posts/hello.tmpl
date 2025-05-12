@@ -4,34 +4,35 @@
     <meta charset='utf-8' />
     <title>DocTray</title>
     <link href='/ressources/css/main.css' rel='stylesheet' type='text/css' />
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
 <div id="page-container">
     {{ template "base/header.tmpl" }}
-    <div id="main-container">
-    <h1>Welcome</h1>
-    <ul>
-        <li>
-            <b>test 01</b>
-        </li>
-        <li>
-            <b>test 02</b>
-        </li>
-        <li>
-            <b>test 03</b>
-        </li>
-        <li>
-            <b>test 04</b>
-        </li>
-    </ul>
-    <b> New List: </b>
-    <ul class="main-list">
-    {{ range . }}
-        <li>
-            <b>{{.num}} loop: {{.key}}</b>
-        </li>
-    {{ end }}
-    </ul>
+    <div id="workspace-container">
+    <div id="tag-container">
+        <h1>Welcome
+        </h1>
+        <button hx-post="/clicked" hx-swap="innerHTML" hx-target="h1" >Click me</button>
+        <ul>
+            <li>
+                <b>test 01</b>
+            </li>
+            <li>
+                <b>test 02</b>
+            </li>
+            <li>
+                <b>test 03</b>
+            </li>
+            <li>
+                <b>test 04</b>
+            </li>
+        </ul>
+    </div>
+    <div id="doc-container">
+        <b> Docs: </b>
+        {{ template "base/doc-list.tmpl" . }}
+    </div>
     </div>
 
 {{ template "base/footer.tmpl" }}

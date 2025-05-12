@@ -1,3 +1,8 @@
+* {
+    font-family: Segoe UI;
+    /* Arial,Helvetica,sans-serif */
+}
+
 body {
     background-image: linear-gradient(to bottom right, red, yellow);
     margin:0px;
@@ -13,7 +18,8 @@ body {
   /* min-width: 100vw; */
 }
 
-#main-container {
+#workspace-container {
+    overflow: hidden;
     position: absolute;
     top: calc(1% + 2.5rem); /* header height */
     left: 50%;
@@ -42,6 +48,38 @@ body {
     line-height: 1.5em;
 }
 
+#tag-container {
+    display: block;
+    margin: 2.5rem auto auto 2.5rem;
+    float: left;
+    max-width: 10em;
+    border-radius: 1em;
+    background-color: #99f;
+    padding: 1em;
+}
+
+#doc-container {
+    /* position: absolute; */
+    /* right: calc(0% + 2.5rem); */
+    /* top: calc(0% + 2.5rem); */
+    margin: 2.5rem 2.5rem auto auto;
+    float: right;
+    max-width: 30em;
+    border-radius: 1em;
+    background-color: #f99;
+    padding: 1em;
+
+}
+
+.doc-entry {
+    color: #fff;
+    background-color: #292929;
+    border-radius: 0.75em;
+    padding: 0.8em;
+    margin: 0.1em;
+}
+
+
 #footer {
     bottom: 0;
     position: absolute;
@@ -60,6 +98,7 @@ body {
     line-height: 2.5rem;
     width: 70%;
     margin: auto;
+    overflow: hidden;
     list-style-type: none;
 }
 #header ul.header li {
@@ -83,7 +122,7 @@ footer ul.footer {
     /* padding: 0px; */
     /* margin: -3em 0 0 0; */
     /* margin: 0; */
-    /* overflow: hidden; */
+    overflow: hidden;
 
     list-style-type: none;
 }

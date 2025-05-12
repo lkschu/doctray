@@ -1,0 +1,7 @@
+{{ define "base/doc-list.tmpl" }}
+        <ul class="main-list">
+        {{ range $doc := . }}
+            {{ template "base/doc.tmpl" $doc }}
+        {{ end }}
+        </ul>
+{{ end }}

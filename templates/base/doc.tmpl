@@ -1,0 +1,5 @@
+{{ define "base/doc.tmpl" }}
+            <li class="doc-entry">
+                <b>{{.Num}} loop: {{.Key}}</b> <button hx-post="/doc-delete" hx-vals='{"id":{{.Num}}}' hx-target=".main-list" hx-swap="innerHTML">X</button>
+            </li>
+{{ end }}

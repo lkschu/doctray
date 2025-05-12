@@ -1,18 +1,31 @@
 body {
     background-image: linear-gradient(to bottom right, red, yellow);
+    margin:0px;
+    padding:0px;
+    min-width:100%;
+    max-width:100%;
+    height: auto;
 }
 
+#page-container {
+  position: relative;
+  min-height: 100vh;
+  /* min-width: 100vw; */
+}
 
-.main-container {
+#main-container {
+    position: absolute;
+    top: 5%;
+    left: 50%;
+    transform: translateX(-50%);
+
     background: #ffff3f;
     border-radius: 1em;
     width: 60%;
     min-width: 20em;
     max-width: 50em;
-    margin: 0 auto 1em auto;
-    padding: 1em 2em;
-    height: calc(100% - 3em);
-
+    /* margin: 5em auto; */
+    padding: 1em 2em 2em 2em;
     /* flex-direction: column; */
 }
 
@@ -20,33 +33,45 @@ body {
     display:inline;
     /* float:left; */
 
-    border: solid 1px black;
-    padding: 10px;
-    margin: 10px;
+    /* border: solid 1px black; */
+    padding: 1px;
+    margin: 1px;
 
-    list-style-type: none;
-    line-height: 4em;
+    list-style: inside;
+    /* list-style-type: none; */
+    line-height: 1.5em;
 }
 
+#footer {
+    bottom: 0;
+    position: absolute;
+    height: 2.5rem;
+    background-color: #333333;
+    width: 100%;
+}
 
 footer ul.footer {
-    position: relative;
-    height: 3em;
+    line-height: 2.5rem;
+    width: 70%;
+    margin: auto;
 
     /* border: solid 1px black; */
-    padding: 0px;
-    margin: -3em 0 0 0;
-    overflow: hidden;
-    background-color: #333333;
+    /* padding: 0px; */
+    /* margin: -3em 0 0 0; */
+    /* margin: 0; */
+    /* overflow: hidden; */
 
     list-style-type: none;
-    line-height: 3em;
 }
 footer ul.footer li {
     float: left;
     display: block;
     color: white;
     text-align: center;
-    padding: auto 0;
-    margin: 0 16px;
+    padding: 0 16px;
+    /* margin: 0 16px; */
+    background-color: #333333;
+}
+footer ul.footer li:hover {
+    background-color: #111111;
 }

@@ -15,7 +15,7 @@ body {
 
 #main-container {
     position: absolute;
-    top: 5%;
+    top: calc(1% + 2.5rem); /* header height */
     left: 50%;
     transform: translateX(-50%);
 
@@ -48,6 +48,30 @@ body {
     height: 2.5rem;
     background-color: #333333;
     width: 100%;
+}
+#header {
+    top: 0;
+    position: absolute;
+    height: 2.5rem;
+    background-color: #333333;
+    width: 100%;
+}
+#header ul.header {
+    line-height: 2.5rem;
+    width: 70%;
+    margin: auto;
+    list-style-type: none;
+}
+#header ul.header li {
+    float: left;
+    display: block;
+    color: white;
+    text-align: center;
+    padding: 0 16px;
+    background-color: #333333;
+}
+#header ul.header li:hover {
+    background-color: #222222;
 }
 
 footer ul.footer {

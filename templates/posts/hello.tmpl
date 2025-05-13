@@ -3,13 +3,35 @@
 <head>
     <meta charset='utf-8' />
     <title>DocTray</title>
-    <link href='/ressources/css/main.css' rel='stylesheet' type='text/css' />
+    <link href='/resources/css/main.css' rel='stylesheet' type='text/css' />
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="/resources/scripts/dragondrop.js"></script>
 </head>
 <body>
 <div id="page-container">
     {{ template "base/header.tmpl" }}
     <div id="workspace-container">
+
+<div class="row">
+        <div class="col-md-6 p-5 mt-5">
+            <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)">
+            <h4>Upload File</h4>
+            <form  class="form">
+                <div id="messages"></div>
+                <div class="mb-3">
+                    <label for="avatarInput" class="form-label">Select Image</label>
+                    <input type="file" class="form-control" id="docUpload" name="files" multiple required>
+                </div>
+                <button
+                    hx-post="/upload"
+                    hx-encoding="multipart/form-data"
+                    hx-target="#messages"
+                    type="submit" class="btn btn-primary">Upload</button>
+            </form>
+            </div>
+        </div>
+    </div>
+
     <div id="tag-container">
         <h1>Welcome
         </h1>

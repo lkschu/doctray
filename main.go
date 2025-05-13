@@ -9,6 +9,8 @@ import (
 	"time"
     "strconv"
 
+    "path/filepath"
+
 	"encoding/json"
 
 	oidcauth "github.com/TJM/gin-gonic-oidcauth"
@@ -108,12 +110,14 @@ func set_data(d []test_data) {
 func main() {
 	router := gin.Default()
     router.StaticFile("/favicon.ico", "./resources/favicon.ico")
-    router.Static("/ressources", "./resources/")
+    router.Static("/resources", "./resources/")
     router.LoadHTMLGlob("templates/**/*")
 
 	// Session Config (Basic cookies)
 	store := cookie.NewStore([]byte("secret"), nil)     // Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
 	router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
+
+    router.MaxMultipartMemory = 10 << 20 // max 10 MiB
 
 	// Authentication Config - Uses example dex config
 	// - https://dexidp.io/docs/getting-started/
@@ -126,6 +130,23 @@ func main() {
 	router.GET("/logout", auth.Logout)
 	router.POST("/clicked", func(c *gin.Context) {
         c.String(http.StatusOK, time.Now().String())
+    })
+    router.POST("/upload", func(c *gin.Context){
+        form, err := c.MultipartForm()
+        if err != nil {
+            c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+            return
+        }
+        fmt.Println("Forms:\n", form.File)
+        files := form.File["files"]
+        for _, file := range files {
+            filename := filepath.Base(file.Filename)
+            if err := c.SaveUploadedFile(file, filename); err != nil {
+                c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
+                return
+            }
+        }
+        c.String(http.StatusOK, "Uploaded successfully %d files", len(files))
     })
 	router.POST("/doc-delete", func(c *gin.Context) {
         id_str := c.PostForm("id")

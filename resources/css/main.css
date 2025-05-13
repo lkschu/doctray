@@ -71,6 +71,12 @@ body {
 
 }
 
+.markzone {
+    border-color: black;
+    border-style: dashed;
+    border-width: 2px;
+}
+
 .doc-entry {
     color: #fff;
     background-color: #292929;

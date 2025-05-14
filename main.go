@@ -1,15 +1,20 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand"
 	"net/http"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
-    "strconv"
 
-    "path/filepath"
+	"path"
+	// "path/filepath"
 
 	"encoding/json"
 
@@ -19,6 +24,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+
+
+
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+func rand_seq(n int) string {
+    b:= make([]rune,n)
+    for i := range b {
+        b[i] = letters[rand.Intn(len(letters))]
+    }
+    return string(b)
+}
 
 
 
@@ -34,9 +50,24 @@ func ExampleConfigAuthentik() (c *oidcauth.Config) {
 	return
 }
 
+type file struct {
+    Name string         `json:"name"`
+    OrgName string      `json:"orgname"`
+}
+
+const (
+    doctype_file string = "file"
+    doctype_mesage string = "msg"
+    doctype_image string = "image"
+)
+
 type test_data struct {
-    Num int             `json:"num"`
-    Key string          `json:"key"`
+    DocID int           `json:"id"`
+    Title string        `json:"title"`
+    Desc string         `json:"desc"`
+    Url string          `json:"url"`
+    Type string         `json:"type"`
+    File file           `json:"file"`
 }
 
 type meta_info struct {
@@ -47,10 +78,12 @@ type doc struct {
     Date_added string   `json:"date"`
     Title string        `json:"title"`
     Description string  `json:"desc"`
-    Url string          `json:"url"`
+    Url string          `json:"url"`    // Either site or dl for file
     Image string        `json:"image"`
     Tags []string       `json:"tags"`
     Meta meta_info      `json:"-"`
+    // TODO: type, i.e. URL, file, multile files, text, image, ...
+    // TODO: org_filename vs uuid_filename
 }
 func (d doc) String() string {
     b,err := json.Marshal(d)
@@ -75,9 +108,22 @@ func (doc) init_data() []doc {
 }
 
 
-func get_data() []test_data {
-    file, err := os.Open("./data/test_data.json")
+func get_data_new_id(data *[]test_data) int {
+    new_id := -1
+    for _,f := range *data {
+        if f.DocID > new_id {
+            new_id = f.DocID
+        }
+    }
+    return new_id + 1
+}
+
+func get_data(sub string) []test_data {
+    file, err := os.Open(fmt.Sprintf("./data/%s.json", sub))
     defer file.Close()
+    if errors.Is(err, fs.ErrNotExist) {
+        return make([]test_data, 0)
+    }
     if err != nil {
         panic(err)
     }
@@ -92,19 +138,40 @@ func get_data() []test_data {
     }
     data := make([]test_data, 1)
     json.Unmarshal(bytes_read[0:n], &data)
+
+    // Validate data, set defaults
+    // TODO: remove duplicate ids
+    for i,d := range data {
+        if d.Type != doctype_file && d.Type != doctype_mesage && d.Type != doctype_image {
+            data[i].Type = doctype_mesage
+        }
+    }
     return data
 }
-func set_data(d []test_data) {
+func set_data(d []test_data, sub string) {
     b,err := json.Marshal(d)
     // fmt.Println(string(b))
     if err != nil {
         panic(err)
     }
 
-    err = os.WriteFile("./data/test_data.json", b, 0644)
+    err = os.WriteFile(fmt.Sprintf("./data/%s.json", sub), b, 0644)
     if err != nil{
         panic(err)
     }
+}
+
+func get_uuid(c *gin.Context) string{
+    session := sessions.Default(c)
+    u := session.Get("sub")
+    var sub string
+    if u != nil {
+        sub = u.(string)
+    } else {
+        sub = "public"
+    }
+    return sub
+
 }
 
 func main() {
@@ -131,22 +198,61 @@ func main() {
 	router.POST("/clicked", func(c *gin.Context) {
         c.String(http.StatusOK, time.Now().String())
     })
-    router.POST("/upload", func(c *gin.Context){
-        form, err := c.MultipartForm()
-        if err != nil {
-            c.String(http.StatusBadRequest, "get form err: %s", err.Error())
-            return
-        }
-        fmt.Println("Forms:\n", form.File)
-        files := form.File["files"]
-        for _, file := range files {
-            filename := filepath.Base(file.Filename)
-            if err := c.SaveUploadedFile(file, filename); err != nil {
-                c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
-                return
+    router.GET("/media/:item", func(c *gin.Context){
+        item := c.Param("item")
+        sub := get_uuid(c)
+        fmt.Println("Item: ", item)
+        fullName := "uploads/" + sub + "/" + item
+        fmt.Println("Fullpath: ", fullName)
+        c.File(fullName)
+    })
+    router.POST("/doc-create", func(c *gin.Context){
+        ret := func (c*gin.Context) bool { // Ugly hack to let the defer update the data before we use it in the tmpl
+            form, err := c.MultipartForm()
+            if err != nil {
+                c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+                return false
             }
+            sub := get_uuid(c)
+            fmt.Println("Forms:\n", form.File)
+            files := form.File["files"]
+            titles := form.Value["title"]
+            var title string
+            if len(titles) > 0 {
+                title = titles[0]
+            } else {
+                title = ""
+            }
+            fmt.Println("title Value: ", titles)
+
+            if len(files) == 0 {
+                data := get_data(sub)
+                data = append(data, test_data{DocID:get_data_new_id(&data),Title:title,Type:doctype_mesage})
+                set_data(data, sub)
+            } else {
+                data := get_data(sub)
+                doc_id := get_data_new_id(&data)
+                defer func() {set_data(data, sub)} ()
+                for _, file := range files {
+                    basename := fmt.Sprintf("%d__%s", time.Now().UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
+                    filename := "uploads/"+ sub +"/" + basename
+                    if err := c.SaveUploadedFile(file, filename); err != nil {
+                        c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
+                        return false
+                    }
+                    data = append(data, test_data{DocID:doc_id,Title:title,Url:"/media/"+basename,Type:doctype_file})
+                    title = ""
+                    doc_id += 1
+                }
+            }
+            return true
+        } (c)
+        if ret {
+            sub := get_uuid(c)
+            // c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+            c.HTML(http.StatusOK, "base/doc-list.tmpl", get_data(sub))
         }
-        c.String(http.StatusOK, "Uploaded successfully %d files", len(files))
+
     })
 	router.POST("/doc-delete", func(c *gin.Context) {
         id_str := c.PostForm("id")
@@ -159,10 +265,11 @@ func main() {
             c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
         }
 
-        test_data_array := get_data()
+        sub := get_uuid(c)
+        test_data_array := get_data(sub)
         to_drop := -1
         for i, e := range test_data_array {
-            if e.Num == id {
+            if e.DocID == id {
                 to_drop = i
                 break
             }
@@ -170,9 +277,19 @@ func main() {
         if to_drop == -1 {
             c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
         } else {
+            url := test_data_array[to_drop].Url
+            if strings.HasPrefix(url, "/media/") {
+                basename := strings.TrimPrefix(url, "/media/")
+                os.Remove("uploads/"+sub+"/"+basename)
+            }
             test_data_array = slices.Delete(test_data_array,to_drop,to_drop+1)
-            set_data(test_data_array)
-            c.HTML(http.StatusOK, "base/doc-list.tmpl", test_data_array)
+            set_data(test_data_array, sub)
+            // c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
+            // c.HTML(http.StatusOK, "base/doc-list.tmpl", test_data_array)
+
+            c.Header("Content-Type", "text/html")
+            answer := "<li class=\"doc-entry doc-type-removed\"> <i>Removed</i> </li>"
+            c.String(http.StatusOK, answer)
         }
     })
 
@@ -194,8 +311,9 @@ func main() {
         //     {Num:1,Key:"a"},{Num:2,Key:"b"},{Num:3,Key:"c"},
         //     {Num:4,Key:"d"},{Num:5,Key:"e"},{Num:6,Key:"f"},
         //     {Num:7,Key:"g"},{Num:8,Key:"h"},{Num:9,Key:"i"} }
-        test_data_array := get_data()
-        set_data(test_data_array)
+        sub := get_uuid(c)
+        test_data_array := get_data(sub)
+        set_data(test_data_array, sub)
         c.HTML(http.StatusOK, "posts/hello.tmpl", test_data_array)
 	})
 

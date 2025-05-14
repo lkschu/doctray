@@ -49,6 +49,7 @@ function dropHandler(ev) {
 
     // Prevent default behavior (Prevent file from being opened)
     ev.preventDefault();
+    dragLeaveHandler(ev)
 
     if (ev.dataTransfer.items) {
         // Use DataTransferItemList interface to access the file(s)
@@ -71,11 +72,9 @@ function dropHandler(ev) {
             }
         }
         console.log(`files(${files.length}): ${files}`)
+        console.log(`Types: ${ev.dataTransfer.types}`)
 
         // var input = document.querySelector('input[type="file"]')
-        // document.getElementById('docUpload').value = input.files
-        //
-
 
         var data = new FormData()
         for (let i = 0; i<items.length; i++) {
@@ -84,16 +83,26 @@ function dropHandler(ev) {
                 if (file) {
                     data.append('files', file)
                 }
+            } else {
+                items[i].getAsString((str)=> { console.log(`nofile(${i}): ${str}`) })
             }
-        }
 
-        // data.append('files', files)
-        // data.append('user', 'test')
-        fetch('/upload', {
+        }
+        const text_input = document.getElementById('docUpload-text').value;
+        data.append('title', text_input)
+        const response = fetch('/doc-create', {
             method: 'POST',
-            // headers: { "Content-Type":"multipart/form-data" },
             body: data
         })
+        // response.then(response => response.text()).then(text => { console.log('Response as string:', text) }).catch(error => { console.error('Fetch error:', error) });
+        response.then(response => response.text()).then(text => { htmx.swap("#doc-container", text, {swapStyle: 'outerHTML scroll:bottom'}) }).catch(error => { console.error('Fetch error:', error) });
+
+        // console.log('Parese1?:', response);
+        // console.log('Parese2?:', text);
+
+        //.then(r => r.json()).then(r => {console.log('Response', r)}).catch(error => console.error('Error', error))
+        // console.log(response.text())
+        // window.location.reload() // Reload page after successfull upload ( because i am to stupid to copy htmx ajax behavior )
     }
     /// INFO: dataTransfer.files is deprecated
     ///else {
@@ -104,10 +113,51 @@ function dropHandler(ev) {
     ///}
 }
 
+function dragLeaveHandler(ev) {
+  var element = document.getElementById("drop_zone");
+    element.classList.remove("markzone")
+}
 function dragOverHandler(ev) {
   console.log("File(s) in drop zone");
+  var element = document.getElementById("drop_zone");
+    element.classList.add("markzone")
 
   // Prevent default behavior (Prevent file from being opened)
   ev.preventDefault();
 }
+function get_file_names(){
+    document.getElementById("docUpload").click()
+}
+
+function sub_uploadbutton_change(obj) {
+    var file = obj.value;
+    console.log('f:', file)
+    var files = obj.files;
+    console.log('ff:', files)
+
+    var buttontext = ""
+    if (!files) {
+        return
+    }
+
+    if (files.length > 1) {
+        buttontext = "(" + files.length + "):"
+        for (var i = 0; i<files.length; i++) {
+            buttontext = buttontext + " " + files[i].name + ";"
+        }
+    } else {
+        buttontext = files[0].name
+    }
+
+
+
+    console.log('fff:', buttontext)
+    // var fileName = file.split("\\");
+    // document.getElementById("docUpload-label").innerHTML = fileName[fileName.length - 1];
+    document.getElementById("docUpload-label").innerHTML = buttontext;
+
+    // document.myForm.submit();
+    event.preventDefault();
+}
+
 

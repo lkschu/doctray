@@ -1,7 +1,69 @@
 {{ define "base/doc-list.tmpl" }}
-        <ul class="main-list">
-        {{ range $doc := . }}
-            {{ template "base/doc.tmpl" $doc }}
-        {{ end }}
-        </ul>
+
+    <div id="doc-container">
+        <div id="doc-container-inner">
+            <b> Docs: </b>
+            <ul class="main-list">
+            {{ range $doc := . }}
+                {{ template "base/doc.tmpl" $doc }}
+            {{ end }}
+            </ul>
+        </div>
+
+        <div id="uploadform">
+            <!--<div class="row">
+                <div class="col-md-6 p-5 mt-5">-->
+                    <div id="upload-container">
+                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)">
+                        Type Something:
+                        <form  class="form" id="form">
+                            <div id="messages"></div>
+                            <div class="mb-3">
+                                <!--<label id="docUpload-label" for="docUpload" class="custom-file-upload" onclick="get_file_names()">Select File</label>-->
+                                <input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" onchange="sub_uploadbutton_change(this)" required>
+                                <div id="docUpload-label" for="docUpload" class="custom-file-upload" onclick="get_file_names()">Select File</div>
+                                <input type="file" class="form-control" id="docUpload" name="files" onchange="sub_uploadbutton_change(this)" multiple required>
+                                <progress id='progress' value='0' max='100'></progress>
+                            </div>
+                            <button
+                                id="upload-button"
+                                hx-encoding="multipart/form-data"
+                                hx-target="#doc-container"
+                                hx-swap="outerHTML scroll:bottom"
+                                hx-post="/doc-create"
+                                type="submit" class="btn btn-primary">Upload</button>
+                        </form>
+                        <script>
+                            htmx.on('#form', 'htmx:xhr:progress', function(evt) {
+                              htmx.find('#progress').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
+                            });
+                            var uploadField = document.getElementById("docUpload");
+                            uploadField.addEventListener('change', (event) => {
+                                const target = event.target
+                                if (target.files && target.files.length > 0) {
+                                    var combined_size = 0
+                                    for (var i = 0; i<target.files.length; i++) {
+                                        combined_size = combined_size + target.files[i].size
+                                    }
+                                    if(combined_size > 2097152*5){ // 10MB
+                                       alert("File is too big!");
+                                       target.value = "";
+                                    };
+                                }
+                            })
+                        </script>
+                        </div>
+                    </div>
+                <!--</div>
+            </div>-->
+        </div>
+    </div>
+    <script type="text/javascript">
+        window.addEventListener('load', (event) => {
+            setTimeout(() => {
+                var doc_container = document.getElementById('doc-container')
+                doc_container.scrollTop = doc_container.scrollHeight;
+            }, 0);
+        });
+     </script>
 {{ end }}

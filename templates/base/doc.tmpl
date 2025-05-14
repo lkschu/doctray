@@ -1,7 +1,7 @@
 {{ define "base/doc.tmpl" }}
     <div class="doc-entry-container" id="doc-entry-container-{{.DocID}}">
         <li class="doc-entry doc-type-{{.Type}}">
-            <b>{{.DocID}}: {{.Title}} ( <a href="{{.Url}}">{{.Url}}</a> )</b> <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">X</button>
+            <b>{{.DocID}}: <div style="white-space:pre-line">{{.Title}}</div> ( <a href="{{.Url}}">⬇️</a> )</b> <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
         </li>
     <div>
 {{ end }}

@@ -90,18 +90,15 @@ function dropHandler(ev) {
         }
         const text_input = document.getElementById('docUpload-text').value;
         data.append('title', text_input)
-        const response = fetch('/doc-create', {
-            method: 'POST',
-            body: data
-        })
-        // response.then(response => response.text()).then(text => { console.log('Response as string:', text) }).catch(error => { console.error('Fetch error:', error) });
-        response.then(response => response.text()).then(text => { htmx.swap("#doc-container", text, {swapStyle: 'outerHTML scroll:bottom'}) }).catch(error => { console.error('Fetch error:', error) });
+        // htmx.ajax('POST', '/doc-create', {target:"#doc-container", swap:'outerHTML'}, data)
+        htmx.ajax('POST', '/doc-create', {values: {files:data.getAll('files'),title:text_input}, source:ev.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
 
-        // console.log('Parese1?:', response);
-        // console.log('Parese2?:', text);
-
-        //.then(r => r.json()).then(r => {console.log('Response', r)}).catch(error => console.error('Error', error))
-        // console.log(response.text())
+        //// const response = fetch('/doc-create', {
+        ////     method: 'POST',
+        ////     body: data
+        //// })
+        //// // response.then(response => response.text()).then(text => { console.log('Response as string:', text) }).catch(error => { console.error('Fetch error:', error) });
+        //// response.then(response => response.text()).then(text => { htmx.swap("#doc-container", text, {swapStyle: 'outerHTML scroll:bottom'}) }).catch(error => { console.error('Fetch error:', error) });
         // window.location.reload() // Reload page after successfull upload ( because i am to stupid to copy htmx ajax behavior )
     }
     /// INFO: dataTransfer.files is deprecated
@@ -148,8 +145,6 @@ function sub_uploadbutton_change(obj) {
     } else {
         buttontext = files[0].name
     }
-
-
 
     console.log('fff:', buttontext)
     // var fileName = file.split("\\");

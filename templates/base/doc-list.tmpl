@@ -14,7 +14,7 @@
             <!--<div class="row">
                 <div class="col-md-6 p-5 mt-5">-->
                     <div id="upload-container">
-                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)">
+                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" hx-post="/doc-create" hx-encoding="multipart/form-data" hx-trigger="none">
                         Type Something:
                         <form  class="form" id="form">
                             <div id="messages"></div>
@@ -35,9 +35,12 @@
                                 type="submit" class="btn btn-primary">Upload</button>
                         </form>
                         <script>
+                            // HTMX progress bar for uploads
                             htmx.on('#form', 'htmx:xhr:progress', function(evt) {
                               htmx.find('#progress').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
                             });
+
+                            // Only upload files under a certain size (only works with the form, not drag and drop)
                             var uploadField = document.getElementById("docUpload");
                             uploadField.addEventListener('change', (event) => {
                                 const target = event.target
@@ -52,14 +55,23 @@
                                     };
                                 }
                             })
+
+                            // Enter for submits, shit+enter for new line
+                            document.getElementById("docUpload-text").addEventListener("keypress", e => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+
+                                    e.currentTarget.closest("form").submit();
+                                }
+                            });
                         </script>
                         </div>
                     </div>
                 <!--</div>
             </div>-->
         </div>
-    </div>
     <script type="text/javascript">
+        // Jump do bottom of doc entries when page is (re)loaded
         window.addEventListener('load', (event) => {
             setTimeout(() => {
                 var doc_container = document.getElementById('doc-container')
@@ -67,4 +79,5 @@
             }, 0);
         });
      </script>
+    </div>
 {{ end }}

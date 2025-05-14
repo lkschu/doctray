@@ -11,9 +11,55 @@
     --color-02: #335599;
 }
 
+@font-face {
+    font-family: 'Gowun';
+    src: url('/resources/fonts/Gowun_Dodum/GowunDodum-Regular.ttf');
+}
+@font-face {
+    font-family: 'Lexend';
+    src: url('/resources/fonts/Lexend_Deca/LexendDeca-VariableFont_wght.ttf');
+}
+@font-face {
+    font-family: 'Outfit';
+    src: url('/resources/fonts/Outfit/Outfit-VariableFont_wght.ttf');
+}
+
+
+@font-face {
+    font-family: 'Quicksand';
+    src: url('/resources/fonts/Quicksand/static/Quicksand-Light.ttf');
+    font-weight: 300;
+}
+@font-face {
+    font-family: 'Quicksand';
+    src: url('/resources/fonts/Quicksand/static/Quicksand-Regular.ttf');
+    font-weight: 400;
+}
+@font-face {
+    font-family: 'Quicksand';
+    src: url('/resources/fonts/Quicksand/static/Quicksand-Medium.ttf');
+    font-weight: 500;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('/resources/fonts/Inter/Inter-VariableFont_opsz,wght.ttf');
+}
+
+@font-face {
+    font-family: 'Onest';
+    src: url('/resources/fonts/Onest/Onest-VariableFont_wght.ttf');
+}
+
+
+/*  */
+
 * {
-    font-family: Segoe UI;
-    /* Arial,Helvetica,sans-serif */
+    /* font-family: Segoe UI; */
+    /* font-family: Arial,Helvetica,sans-serif; */
+    /* font-family: Inter; */
+    font-family: Helvetica;
+    /* font-weight: 500; */
 }
 
 body {

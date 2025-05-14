@@ -91,6 +91,7 @@ function dropHandler(ev) {
         const text_input = document.getElementById('docUpload-text').value;
         data.append('title', text_input)
         // htmx.ajax('POST', '/doc-create', {target:"#doc-container", swap:'outerHTML'}, data)
+        console.log(`source: ${ev.currentTarget}`)
         htmx.ajax('POST', '/doc-create', {values: {files:data.getAll('files'),title:text_input}, source:ev.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
 
         //// const response = fetch('/doc-create', {

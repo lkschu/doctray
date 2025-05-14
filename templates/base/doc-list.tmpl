@@ -61,7 +61,10 @@
                                 if (e.key === "Enter" && !e.shiftKey) {
                                     e.preventDefault();
 
-                                    e.currentTarget.closest("form").submit();
+                                    //e.currentTarget.closest("form").submit();
+                                    var form_data = new FormData(document.getElementById("form"))
+                                    const text_input = document.getElementById('docUpload-text').value;
+                                    htmx.ajax('POST', '/doc-create', {values: {files:form_data.getAll('files'),title:text_input}, source:e.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
                                 }
                             });
                         </script>

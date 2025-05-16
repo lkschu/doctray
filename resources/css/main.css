@@ -2,13 +2,37 @@
     --gray-01: #f2f2f2;
     --gray-02: #d6d6d6;
     --gray-03: #b6b6b6;
+    --gray-05: #999;
+    --gray-06: #777;
+    --gray-07: #555;
+    --gray-08: #292929;
+    --gray-09: #191919;
 
-    --tray-bg: #f2f2f2;
-    --tray-entry-bg: #d6d6d6;
+    --tray-bg: #ffffff;
+    --tray-entry-bg: var(--gray-01);
     --tray-entry-fg: #000000;
     --tray-entry-fg-alt: #191919;
+    --shadow-bg: var(--gray-07);
     --color-01: #335599;
     --color-02: #335599;
+
+    --debug-c-01: #fd440e;
+    --debug-c-02: #2ab30e;
+    --debug-c-03: #2876b2;
+    --debug-c-04: #fc9612;
+    --debug-c-05: #551bcc;
+    --debug-c-06: #b30f74;
+    --debug-c-07: #fde527;
+    --debug-c-01: transparent;
+    --debug-c-02: transparent;
+    --debug-c-03: transparent;
+    --debug-c-04: transparent;
+    --debug-c-05: transparent;
+    --debug-c-06: transparent;
+    --debug-c-07: transparent;
+
+
+    --doc-entry-outer-padding: 0.3em;
 }
 
 @font-face {
@@ -214,15 +238,76 @@ input[type="file"] {
 
 .doc-entry-container li {
     list-style: none;
+    box-shadow: 2px 1px 5px var(--shadow-bg);
 }
+
+/* .debug { */
+/*     padding: 2px; */
+/* } */
+.doc-entry-inlist{
+    display: flex;
+    position: relative;
+    width: 100%;
+    margin-left: 0.2rem;
+    background-color: var(--debug-c-01);
+}
+.doc-entry-content{
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    flex-direction: column;
+    background-color: var(--debug-c-02);
+}
+.doc-entry-type-container{
+    background-color: var(--debug-c-03);
+    margin-bottom: 0.4rem;
+}
+.doc-entry-stats{
+    font-size: 10px;
+    font-style: italic;
+    color: var(--gray-08);
+    display: flex;
+    justify-content: space-between;
+    background-color: var(--debug-c-04);
+    user-select: none;
+}
+.doc-entry-stat-id {
+    background-color: var(--debug-c-05);
+    margin-left: 1.0em;
+}
+.doc-entry-stat-date {
+    background-color: var(--debug-c-06);
+    margin-right: 1.0em;
+}
+.doc-entry-button {
+    /* position: absolute; */
+    /* height: 100%; */
+    /* justify-content: space-between; */
+    display: flex;
+    flex-direction: column-reverse;
+    padding: 0;
+    background-color: var(--debug-c-07);
+}
+.doc-entry-button-del button {
+    align-self: flex-end;
+}
+.doc-entry-button-del button,
+.doc-entry-button-fav button
+{
+    margin-top: 4px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 
 .doc-entry {
     color: var(--tray-entry-fg);
     background-color: var(--tray-entry-bg);
-    border-radius: 0.75em;
+    border-radius: 0.65em;
     max-width: 70%;
-    padding: 0.8em;
-    margin: 0.1em;
+    padding: calc(var(--doc-entry-outer-padding) * 2) var(--doc-entry-outer-padding) var(--doc-entry-outer-padding) calc(var(--doc-entry-outer-padding) * 2);
+    margin-left: 0.2rem;
+    margin-top: 1.2rem;
     display: flex;
     justify-content: space-between;
     box-sizing: border-box;
@@ -236,9 +321,13 @@ input[type="file"] {
 }
 .doc-entry.doc-type-removed {
     border-color: #d96969;
-    border-width: 3px;
+    border-width: 2px;
     border-style:inset;
+    padding: 0.5em 1em;
     background-color: #d9696966 !important;
+    /* box-shadow: none; */
+    color: var(--gray-08);
+    /* box-shadow: 2px 2px 1px red inset; */
 }
 .doc-entry a {
     color: var(--color-01);
@@ -248,7 +337,7 @@ input[type="file"] {
 .doc-entry button {
     display: block;
     align-self: flex-end;
-    background-color: var(--gray-03);
+    background-color: var(--tray-entry-bg);
     text-align: center;
     padding: 5px;
     border-radius: 50%;
@@ -259,7 +348,7 @@ input[type="file"] {
     color: var(--gray-01);
 }
 .doc-entry button:hover {
-    background-color: var(--gray-01);
+    background-color: var(--gray-03);
     color: var(--gray-03);
 }
 

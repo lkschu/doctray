@@ -1,8 +1,32 @@
 {{ define "base/doc.tmpl" }}
     <div class="doc-entry-container" id="doc-entry-container-{{.DocID}}">
+
         <li class="doc-entry doc-type-{{.Type}}">
-            <div>{{.DocID}}: <div style="white-space:pre-line">{{.Title}}</div> {{ if .Url }}{{ template "base/doc-url.tmpl" .Url }}{{ end }}</div> <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+            <div class="doc-entry-inlist debug">
+
+                <div class="doc-entry-content debug">
+                    <div class="doc-entry-type-container debug">
+                        <div style="white-space:pre-line">{{.Title}}</div>
+                        {{ if .Url }}{{ template "base/doc-url.tmpl" .Url }}{{ end }}
+                    </div>
+                    <div class="doc-entry-stats debug">
+                        <div class="doc-entry-stat-id debug">{{.DocID}}</div>
+                        <div class="doc-entry-stat-date debug">2025-05-16 23:00</div>
+                    </div>
+                </div>
+
+                <div class="doc-entry-button debug">
+                    <div class="doc-entry-button-del">
+                        <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+                    </div>
+                    <div class="doc-entry-button-fav">
+                        <button>🌟</button>
+                    </div>
+                </div>
+
+            </div>
         </li>
+
     <div>
 {{ end }}
 {{ define "base/doc-url.tmpl" }}

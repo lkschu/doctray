@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"math/rand"
 	"net/http"
+    "html"
+    "html/template"
 	"os"
 	"slices"
 	"strconv"
@@ -23,6 +25,12 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
+
+
+// TODO: the (html/)template.HTML type (which is an alias for a string) can be used to pass html tags into the template
+//  otherwise they are escaped
+// TODO: this can be used in the future to add very limited markdown rendering
+// TODO: store text html escaped -> add custom html tags for [lists, bold, italic]
 
 
 
@@ -42,10 +50,22 @@ func rand_seq(n int) string {
 
 func ExampleConfigAuthentik() (c *oidcauth.Config) {
 	c = oidcauth.DefaultConfig()
-	c.ClientID = "KK6B05dYMspF6uwIWMr69PFcCvzkluJaGiXCAUX4"
-	c.ClientSecret = "hVSwjzSJOhk2gg4M3Os3Vcg3x7EQ7nMjVOIhpJTnAmjvd3m33mcrH6mrO9wJcIQdp9MSbmcA11Ek0NEblTaoCCal72b2hkjgSa6YpmNppKwxWu8iClE9OMXpzi4uC3N4"
-	c.IssuerURL = "https://auth.lukasschumann.de/application/o/test-app/"
-	c.RedirectURL = "http://127.0.0.1:5555/callback"
+	c.ClientID = os.Getenv("DOCTRAY_CLIENTID")
+	if c.ClientID == "" {
+		panic("Can't read: DOCTRAY_CLIENTID")
+	}
+	c.ClientSecret = os.Getenv("DOCTRAY_CLIENTSECRET")
+	if c.ClientSecret == "" {
+		panic("Can't read: DOCTRAY_CLIENTSECRET")
+	}
+	c.IssuerURL = os.Getenv("DOCTRAY_ISSUERURL")
+	if c.IssuerURL == "" {
+		panic("Can't read: DOCTRAY_ISSUERURL")
+	}
+	c.RedirectURL = os.Getenv("DOCTRAY_REDIRECTURL")
+	if c.RedirectURL == "" {
+		panic("Can't read: DOCTRAY_REDIRECTURL")
+	}
     c.LoginClaim = "sub"
 	return
 }
@@ -63,7 +83,7 @@ const (
 
 type test_data struct {
     DocID int           `json:"id"`
-    Title string        `json:"title"`
+    Title template.HTML        `json:"title"`
     Desc string         `json:"desc"`
     Url string          `json:"url"`
     Type string         `json:"type"`
@@ -220,6 +240,7 @@ func main() {
             var title string
             if len(titles) > 0 {
                 title = titles[0]
+                title = html.EscapeString(title)
             } else {
                 title = ""
             }
@@ -227,7 +248,7 @@ func main() {
 
             if len(files) == 0 {
                 data := get_data(sub)
-                data = append(data, test_data{DocID:get_data_new_id(&data),Title:title,Type:doctype_mesage})
+                data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage})
                 set_data(data, sub)
             } else {
                 data := get_data(sub)
@@ -240,7 +261,7 @@ func main() {
                         c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
                         return false
                     }
-                    data = append(data, test_data{DocID:doc_id,Title:title,Url:"/media/"+basename,Type:doctype_file})
+                    data = append(data, test_data{DocID:doc_id,Title:template.HTML(title),Url:"/media/"+basename,Type:doctype_file})
                     title = ""
                     doc_id += 1
                 }

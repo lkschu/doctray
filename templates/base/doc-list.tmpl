@@ -2,7 +2,36 @@
 
     <div id="doc-container">
         <div id="doc-container-inner">
+
             <b> Docs: </b>
+
+            <div class="doc-entry-container" id="doc-entry-container-00">
+                <li class="doc-entry doc-type-msg">
+                    <div class="doc-entry-inlist debug">
+
+                        <div class="doc-entry-content debug">
+                            <div class="doc-entry-type-container debug">
+                                <div style="white-space:pre-line">When I didn't use stat_summary before it caused the bars to look like they do in the picture below, as it was plotting all of the raw data for each variable on top of each other, so I used stat_summary in order to only plot the mean data values. Would there not be a way, whilst using stat_summary, to have the error bars coming from a different value for each bar?</div>
+                            </div>
+                            <div class="doc-entry-stats debug">
+                                <div class="doc-entry-stat-id debug">id00</div>
+                                <div class="doc-entry-stat-date debug">2025-05-16 23:00</div>
+                            </div>
+                        </div>
+
+                        <div class="doc-entry-button debug">
+                            <div class="doc-entry-button-del">
+                                <button hx-post="/doc-delete" hx-vals='{"id":"id00"}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+                            </div>
+                            <div class="doc-entry-button-fav">
+                                <button>🌟</button>
+                            </div>
+                        </div>
+
+                    </div>
+                </li>
+            </div>
+
             <ul class="main-list">
             {{ range $doc := . }}
                 {{ template "base/doc.tmpl" $doc }}
@@ -21,7 +50,7 @@
                             <div class="mb-3">
                                 <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" onchange="sub_uploadbutton_change(this)" required>-->
                                 <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" required>-->
-                                <textarea class="form-control" id="docUpload-text" placeholder="Title" name="title" required></textarea>
+                                <textarea autofocus class="form-control" id="docUpload-text" placeholder="Title" name="title" required></textarea>
                                 <div id="docUpload-label" for="docUpload" class="custom-file-upload" onclick="get_file_names()">Select File</div>
                                 <input type="file" class="form-control" id="docUpload" name="files" onchange="sub_uploadbutton_change(this)" multiple required>
                                 <progress id='progress' value='0' max='100'></progress>

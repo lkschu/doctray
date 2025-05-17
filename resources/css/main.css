@@ -205,6 +205,7 @@ input[type="file"] {
     overflow: hidden;
     text-overflow: ellipsis;
     width: 100%;
+    min-height: 6rem;
     /* display: inline-block; */
     padding: 6px 12px;
     cursor: pointer;
@@ -288,8 +289,18 @@ input[type="file"] {
     padding: 0;
     background-color: var(--debug-c-07);
 }
-.doc-entry-button-del button {
-    align-self: flex-end;
+
+/* .doc-entry-button-del button { */
+/*     box-shadow: 1px 1px 1px #444; */
+/*     border-width: 0.2px 2px 0.2px 0.2px !important; */
+/*     /1* border-width: 2px 0.5px 0.5px 2px !important; *1/ */
+/*     box-sizing: border-box; */
+/*     border-color: #393939 !important; */
+/*     border-style: solid !important; */
+/* } */
+
+.doc-entry-button-fav.starred button {
+    background-color: var(--gray-07) !important;
 }
 .doc-entry-button-del button,
 .doc-entry-button-fav button

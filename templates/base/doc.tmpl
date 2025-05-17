@@ -11,7 +11,7 @@
                     </div>
                     <div class="doc-entry-stats debug">
                         <div class="doc-entry-stat-id debug">{{.DocID}}</div>
-                        <div class="doc-entry-stat-date debug">2025-05-16 23:00</div>
+                        <div class="doc-entry-stat-date debug">{{ .Date }}</div>
                     </div>
                 </div>
 
@@ -19,8 +19,8 @@
                     <div class="doc-entry-button-del">
                         <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
                     </div>
-                    <div class="doc-entry-button-fav">
-                        <button>🌟</button>
+                    <div class="doc-entry-button-fav {{ if .Starred }}starred{{end}}">
+                        <button hx-post="/doc-star" hx-vals='{"id":{{.DocID}}}'hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
                     </div>
                 </div>
 

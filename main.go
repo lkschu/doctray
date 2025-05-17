@@ -1,29 +1,29 @@
 package main
 
 import (
-	"errors"
-	"fmt"
-	"io"
-	"io/fs"
-	"math/rand"
-	"net/http"
+    "errors"
+    "fmt"
+    "io"
+    "io/fs"
+    "math/rand"
+    "net/http"
     "html"
     "html/template"
-	"os"
-	"slices"
-	"strconv"
-	"strings"
-	"time"
+    "os"
+    "slices"
+    "strconv"
+    "strings"
+    "time"
 
-	"path"
-	// "path/filepath"
+    "path"
+    // "path/filepath"
 
-	"encoding/json"
+    "encoding/json"
 
-	oidcauth "github.com/TJM/gin-gonic-oidcauth"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
-	"github.com/gin-gonic/gin"
+    oidcauth "github.com/TJM/gin-gonic-oidcauth"
+    "github.com/gin-contrib/sessions"
+    "github.com/gin-contrib/sessions/cookie"
+    "github.com/gin-gonic/gin"
 )
 
 
@@ -49,25 +49,25 @@ func rand_seq(n int) string {
 
 
 func ExampleConfigAuthentik() (c *oidcauth.Config) {
-	c = oidcauth.DefaultConfig()
-	c.ClientID = os.Getenv("DOCTRAY_CLIENTID")
-	if c.ClientID == "" {
-		panic("Can't read: DOCTRAY_CLIENTID")
-	}
-	c.ClientSecret = os.Getenv("DOCTRAY_CLIENTSECRET")
-	if c.ClientSecret == "" {
-		panic("Can't read: DOCTRAY_CLIENTSECRET")
-	}
-	c.IssuerURL = os.Getenv("DOCTRAY_ISSUERURL")
-	if c.IssuerURL == "" {
-		panic("Can't read: DOCTRAY_ISSUERURL")
-	}
-	c.RedirectURL = os.Getenv("DOCTRAY_REDIRECTURL")
-	if c.RedirectURL == "" {
-		panic("Can't read: DOCTRAY_REDIRECTURL")
-	}
+    c = oidcauth.DefaultConfig()
+    c.ClientID = os.Getenv("DOCTRAY_CLIENTID")
+    if c.ClientID == "" {
+        panic("Can't read: DOCTRAY_CLIENTID")
+    }
+    c.ClientSecret = os.Getenv("DOCTRAY_CLIENTSECRET")
+    if c.ClientSecret == "" {
+        panic("Can't read: DOCTRAY_CLIENTSECRET")
+    }
+    c.IssuerURL = os.Getenv("DOCTRAY_ISSUERURL")
+    if c.IssuerURL == "" {
+        panic("Can't read: DOCTRAY_ISSUERURL")
+    }
+    c.RedirectURL = os.Getenv("DOCTRAY_REDIRECTURL")
+    if c.RedirectURL == "" {
+        panic("Can't read: DOCTRAY_REDIRECTURL")
+    }
     c.LoginClaim = "sub"
-	return
+    return
 }
 
 type file struct {
@@ -83,10 +83,12 @@ const (
 
 type test_data struct {
     DocID int           `json:"id"`
-    Title template.HTML        `json:"title"`
+    Title template.HTML `json:"title"`
     Desc string         `json:"desc"`
     Url string          `json:"url"`
     Type string         `json:"type"`
+    Date string         `json:"date"`
+    Starred bool        `json:"starred"`
     File file           `json:"file"`
 }
 
@@ -195,27 +197,27 @@ func get_uuid(c *gin.Context) string{
 }
 
 func main() {
-	router := gin.Default()
+    router := gin.Default()
     router.StaticFile("/favicon.ico", "./resources/favicon.ico")
     router.Static("/resources", "./resources/")
     router.LoadHTMLGlob("templates/**/*")
 
-	// Session Config (Basic cookies)
-	store := cookie.NewStore([]byte("secret"), nil)     // Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
-	router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
+    // Session Config (Basic cookies)
+    store := cookie.NewStore([]byte("secret"), nil)     // Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
+    router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
     router.MaxMultipartMemory = 10 << 20 // max 10 MiB
 
-	// Authentication Config - Uses example dex config
-	// - https://dexidp.io/docs/getting-started/
-	auth, err := oidcauth.GetOidcAuth(ExampleConfigAuthentik())
-	if err != nil {
-		panic("auth setup failed")
-	}
-	router.GET("/login", auth.Login) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
-	router.GET("/callback", auth.AuthCallback)
-	router.GET("/logout", auth.Logout)
-	router.POST("/clicked", func(c *gin.Context) {
+    // Authentication Config - Uses example dex config
+    // - https://dexidp.io/docs/getting-started/
+    auth, err := oidcauth.GetOidcAuth(ExampleConfigAuthentik())
+    if err != nil {
+        panic("auth setup failed")
+    }
+    router.GET("/login", auth.Login) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
+    router.GET("/callback", auth.AuthCallback)
+    router.GET("/logout", auth.Logout)
+    router.POST("/clicked", func(c *gin.Context) {
         c.String(http.StatusOK, time.Now().String())
     })
     router.GET("/media/:item", func(c *gin.Context){
@@ -246,9 +248,10 @@ func main() {
             }
             fmt.Println("title Value: ", titles)
 
+            date := time.Now().UTC().Format(http.TimeFormat)
             if len(files) == 0 {
                 data := get_data(sub)
-                data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage})
+                data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date})
                 set_data(data, sub)
             } else {
                 data := get_data(sub)
@@ -261,7 +264,8 @@ func main() {
                         c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
                         return false
                     }
-                    data = append(data, test_data{DocID:doc_id,Title:template.HTML(title),Url:"/media/"+basename,Type:doctype_file})
+
+                    data = append(data, test_data{DocID:doc_id,Title:template.HTML(title),Url:"/media/"+basename,Type:doctype_file,Date: date})
                     title = ""
                     doc_id += 1
                 }
@@ -275,7 +279,42 @@ func main() {
         }
 
     })
-	router.POST("/doc-delete", func(c *gin.Context) {
+    router.POST("/doc-star", func(c *gin.Context) {
+        id_str := c.PostForm("id")
+        if id_str == "" {
+            c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
+        }
+        fmt.Printf("Got ID: %s\n", id_str)
+        id, err := strconv.Atoi(id_str)
+        if err != nil {
+            c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
+        }
+
+        sub := get_uuid(c)
+        test_data_array := get_data(sub)
+		toggle_star := -1
+        for i, e := range test_data_array {
+            if e.DocID == id {
+                toggle_star = i
+                break
+            }
+        }
+        if toggle_star == -1 {
+            c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
+		} else {
+			test_data_array[toggle_star].Starred = ! test_data_array[toggle_star].Starred
+            set_data(test_data_array, sub)
+            c.Header("Content-Type", "text/html")
+			answer := ""
+			if test_data_array[toggle_star].Starred {
+				answer = "<div class=\"doc-entry-button-fav starred\"> <button hx-post=\"/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
+			} else {
+				answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/doc-star\" hx-vals='{\"id\":" + id_str +"}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
+			}
+            c.String(http.StatusOK, answer)
+		}
+    })
+    router.POST("/doc-delete", func(c *gin.Context) {
         id_str := c.PostForm("id")
         if id_str == "" {
             c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
@@ -314,17 +353,17 @@ func main() {
         }
     })
 
-	// Allow access to / for unauthenticated users, but authenticated users will be greated by name.
-	router.GET("/", func(c *gin.Context) {
-		session := sessions.Default(c)
-		name := "world"
-		n := session.Get("name")
-		if n != nil {
-			name = n.(string)
-		}
+    // Allow access to / for unauthenticated users, but authenticated users will be greated by name.
+    router.GET("/", func(c *gin.Context) {
+        session := sessions.Default(c)
+        name := "world"
+        n := session.Get("name")
+        if n != nil {
+            name = n.(string)
+        }
         println(name)
-		// session.Save() // if it has been changed, which it has not
-		// c.String(http.StatusOK, fmt.Sprintf("<h1>Welcome</h1>\nHello, %s.", name))
+        // session.Save() // if it has been changed, which it has not
+        // c.String(http.StatusOK, fmt.Sprintf("<h1>Welcome</h1>\nHello, %s.", name))
         // c.HTML(http.StatusOK, "posts/hello.tmpl", gin.H{"name":name,})
         // c.HTML(http.StatusOK, "posts/hello.tmpl", []map[string]string{{"num":"1","key":"a"},{"num":"2","key":"b"}})
 
@@ -336,34 +375,34 @@ func main() {
         test_data_array := get_data(sub)
         set_data(test_data_array, sub)
         c.HTML(http.StatusOK, "posts/hello.tmpl", test_data_array)
-	})
+    })
 
-	private := router.Group("/private", auth.AuthRequired())
-	{
-		private.GET("", func(c *gin.Context) {
-			var name, email, sub, out string
-			login := c.GetString(oidcauth.AuthUserKey)
-			session := sessions.Default(c)
-			n := session.Get("name")
-			if n == nil {
-				name = "Someone without a name?"
-			} else {
-				name = n.(string)
-			}
-			e := session.Get("email")
-			if e != nil {
-				email = e.(string)
-			}
-			u := session.Get("sub")
-			if u != nil {
-				sub = u.(string)
-			}
+    private := router.Group("/private", auth.AuthRequired())
+    {
+        private.GET("", func(c *gin.Context) {
+            var name, email, sub, out string
+            login := c.GetString(oidcauth.AuthUserKey)
+            session := sessions.Default(c)
+            n := session.Get("name")
+            if n == nil {
+                name = "Someone without a name?"
+            } else {
+                name = n.(string)
+            }
+            e := session.Get("email")
+            if e != nil {
+                email = e.(string)
+            }
+            u := session.Get("sub")
+            if u != nil {
+                sub = u.(string)
+            }
             out = fmt.Sprintf("Hello, %s <%s>.\nLogin: %s\n\nsub: %s", name, email, login, sub)
-			// session.Save() // if it has been changed, which it has not
-			c.String(http.StatusOK, out)
-			return
-		})
-	}
+            // session.Save() // if it has been changed, which it has not
+            c.String(http.StatusOK, out)
+            return
+        })
+    }
 
-	router.Run(":5555")
+    router.Run(":5555")
 }

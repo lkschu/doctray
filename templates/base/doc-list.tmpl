@@ -10,6 +10,24 @@
                     <div class="doc-entry-inlist debug">
 
                         <div class="doc-entry-content debug">
+
+							<div class="doc-entry-web-preview debug">
+								<div class="doc-entry-web-preview-image">
+									<img src="https://www.homesicktexan.com/wp-content/uploads/2017/02/Coca-Cola-braised-carnitas-DSC4126-1-1536x1020.jpg.webp" width="100" height="100">
+								</div>
+								<div class="doc-entry-web-preview-text">
+									<div class="doc-entry-web-preview-title">
+										Coca-Cola braised carnitas
+									</div>
+									<div class="doc-entry-web-preview-description">
+										A few years ago, a Texas reader asked me for a carnitas recipe. I shared mine and she said that while they looked good, she was looking for one that used Coca-Cola and milk instead. She explained that she’d had them that way at a local restaurant and they were outstanding. With good intentions, I told her I’d look into it. But I became busy with other projects and sadly forgot about helping her find a recipe as well as the place where she had eaten them.
+									</div>
+									<div class="doc-entry-web-preview-url">
+										https://www.homesicktexan.com/coca-cola-braised-carnitas/this-path-is-only-the-fuckup-the-layout
+									</div>
+								</div>
+							</div>
+
                             <div class="doc-entry-type-container debug">
                                 <div style="white-space:pre-line">When I didn't use stat_summary before it caused the bars to look like they do in the picture below, as it was plotting all of the raw data for each variable on top of each other, so I used stat_summary in order to only plot the mean data values. Would there not be a way, whilst using stat_summary, to have the error bars coming from a different value for each bar?</div>
                             </div>
@@ -21,7 +39,7 @@
 
                         <div class="doc-entry-button debug">
                             <div class="doc-entry-button-del">
-                                <button hx-post="/doc-delete" hx-vals='{"id":"id00"}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+                                <button hx-post="/tray/doc-delete" hx-vals='{"id":"id00"}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
                             </div>
                             <div class="doc-entry-button-fav">
                                 <button>🌟</button>
@@ -43,7 +61,7 @@
             <!--<div class="row">
                 <div class="col-md-6 p-5 mt-5">-->
                     <div id="upload-container">
-                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" hx-post="/doc-create" hx-encoding="multipart/form-data" hx-trigger="none">
+                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-trigger="none">
                         Type Something:
                         <form  class="form" id="form">
                             <div id="messages"></div>
@@ -60,7 +78,7 @@
                                 hx-encoding="multipart/form-data"
                                 hx-target="#doc-container"
                                 hx-swap="outerHTML scroll:bottom"
-                                hx-post="/doc-create"
+                                hx-post="/tray/doc-create"
                                 type="submit" class="btn btn-primary">Upload</button>
                         </form>
                         <script>
@@ -93,7 +111,7 @@
                                     //e.currentTarget.closest("form").submit();
                                     var form_data = new FormData(document.getElementById("form"))
                                     const text_input = document.getElementById('docUpload-text').value;
-                                    htmx.ajax('POST', '/doc-create', {values: {files:form_data.getAll('files'),title:text_input}, source:e.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
+                                    htmx.ajax('POST', '/tray/doc-create', {values: {files:form_data.getAll('files'),title:text_input}, source:e.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
                                 }
                             });
                         </script>

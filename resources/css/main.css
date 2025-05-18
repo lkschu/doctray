@@ -23,6 +23,8 @@
     --debug-c-05: #551bcc;
     --debug-c-06: #b30f74;
     --debug-c-07: #fde527;
+    --debug-c-08: #2b65d9;
+    --debug-c-09: #81cb1a;
     --debug-c-01: transparent;
     --debug-c-02: transparent;
     --debug-c-03: transparent;
@@ -30,6 +32,8 @@
     --debug-c-05: transparent;
     --debug-c-06: transparent;
     --debug-c-07: transparent;
+    --debug-c-08: transparent;
+    --debug-c-09: transparent;
 
 
     --doc-entry-outer-padding: 0.3em;
@@ -111,7 +115,7 @@ body {
 
     background: #ffff3f;
     border-radius: 1em;
-    width: 70%;
+    width: 80vw;
     min-width: 30em;
     max-width: 90em;
     /* margin: 5em auto; */
@@ -237,6 +241,12 @@ input[type="file"] {
     border-width: 2px;
 }
 
+
+.doc-entry-container {
+	background-color: var(--debug-c-09);
+
+}
+
 .doc-entry-container li {
     list-style: none;
     box-shadow: 2px 1px 5px var(--shadow-bg);
@@ -245,22 +255,99 @@ input[type="file"] {
 /* .debug { */
 /*     padding: 2px; */
 /* } */
+
 .doc-entry-inlist{
     display: flex;
     position: relative;
     width: 100%;
-    margin-left: 0.2rem;
     background-color: var(--debug-c-01);
+	box-sizing: border-box;
 }
 .doc-entry-content{
-    flex: 1;
     display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
     justify-content: space-between;
     flex-direction: column;
     background-color: var(--debug-c-02);
+	width: 100%;
+	box-sizing: border-box;
+}
+.doc-entry-web-preview {
+	width: 100%;
+	box-sizing: border-box;
+	flex: 1;
+	background-color: white;
+	display: flex;
+	border-radius: 0.65rem;
+	border-color: var(--gray-02);
+	border-style: solid;
+	border-width: 1px;
+	height: 100px;
+	padding: 6px;
+
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+}
+.doc-entry-web-preview-image{
+    background-color: var(--debug-c-02);
+}
+.doc-entry-web-preview-text{
+	width: 100%;
+	box-sizing: border-box;
+	display: flex;
+	justify-content: space-between;
+    flex-direction: column;
+	height: 100px;
+	overflow: hidden;
+	/* border: 1px solid black; */
+	margin-left: 10px;
+}
+.doc-entry-web-preview-title{
+	font-weight: bold;
+	line-height: 1.2;
+}
+.doc-entry-web-preview-description {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: 1.2em;
+	max-height: calc(1.2em * 3);
+	/*  Only works in webkit (not fx not chrome) browsers */
+	/* display: -webkit-box; */
+	/* -webkit-line-clamp: 3; */
+	/* -webkit-box-orient: vertical; */
+}
+.doc-entry-web-preview-url {
+	width: 100%;
+	max-width: 100%;
+	font-size: 15px;
+	font-style: italic;
+	line-height: 1.2;
+	color: var(--tray-entry-fg-alt);
+	/* display: -webkit-box; */
+	-webkit-line-clamp: 1;
+	text-decoration: underline;
+	line-height: 1.2em;
+	max-height: calc(1.2em * 1);
+	background-color: white;
+	border: 1px solid var(--gray-02);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	word-break: break-all;
+	/* INFO: trying to fix overflow of div when url is too long, not working :( */
+	overflow-wrap: anywhere;
+	white-space: nowrap;
+}
+.doc-entry-web-preview-image img{
+	display: block;
+	margin: auto;
 }
 .doc-entry-type-container{
+    font-size: 15px;
     background-color: var(--debug-c-03);
+	padding: 5px;
     margin-bottom: 0.4rem;
 }
 .doc-entry-stats{

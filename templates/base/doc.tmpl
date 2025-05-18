@@ -7,7 +7,7 @@
                 <div class="doc-entry-content debug">
                     <div class="doc-entry-type-container debug">
                         <div style="white-space:pre-line">{{.Title}}</div>
-                        {{ if .Url }}{{ template "base/doc-url.tmpl" .Url }}{{ end }}
+                        {{ if .Files }}{{ template "base/doc-url.tmpl" .Files }}{{ end }}
                     </div>
                     <div class="doc-entry-stats debug">
                         <div class="doc-entry-stat-id debug">{{.DocID}}</div>
@@ -17,10 +17,10 @@
 
                 <div class="doc-entry-button debug">
                     <div class="doc-entry-button-del">
-                        <button hx-post="/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+                        <button hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
                     </div>
                     <div class="doc-entry-button-fav {{ if .Starred }}starred{{end}}">
-                        <button hx-post="/doc-star" hx-vals='{"id":{{.DocID}}}'hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
+                        <button hx-post="/tray/doc-star" hx-vals='{"id":{{.DocID}}}'hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
                     </div>
                 </div>
 
@@ -30,5 +30,8 @@
     <div>
 {{ end }}
 {{ define "base/doc-url.tmpl" }}
-( <a href="{{.}}">⬇️ {{.}}</a> )
+	{{ len . }}
+	{{ range $file := . }}
+	( <a target="_blank" href="{{$file.Url}}">⬇️blabla {{$file.Name}}</a> )
+	{{end}}
 {{ end }}

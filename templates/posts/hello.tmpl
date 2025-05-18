@@ -10,28 +10,12 @@
 <body>
 <div id="page-container">
     {{ template "base/header.tmpl" }}
-    <div id="workspace-container">
-    <div id="tag-container">
-        <ul>
-            <li>
-                <b>test 01</b>
-                    <form  class="form">
-                        <input type="color" class="form-control" name="files" required>
-                    </form>
-            </li>
-            <li>
-                <b>test 02</b>
-            </li>
-            <li>
-                <b>test 03</b>
-            </li>
-            <li>
-                <b>test 04</b>
-            </li>
-        </ul>
-    </div>
-    {{ template "base/doc-list.tmpl" . }}
-    </div>
+
+    <h1> Welcome to DocTray </h1>
+
+    Hello {{.}}
+    <br>
+    Please authenticate
 
 {{ template "base/footer.tmpl" }}
 {{ end }}

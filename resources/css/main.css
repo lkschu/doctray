@@ -329,6 +329,7 @@ input[type="file"] {
 	/* display: -webkit-box; */
 	-webkit-line-clamp: 1;
 	text-decoration: underline;
+	/* TODO: line-height is defined 2x times;*/
 	line-height: 1.2em;
 	max-height: calc(1.2em * 1);
 	background-color: white;
@@ -349,6 +350,48 @@ input[type="file"] {
     background-color: var(--debug-c-03);
 	padding: 5px;
     margin-bottom: 0.4rem;
+}
+.doc-entry-files-container{
+	display: flex;
+}
+.doc-entry-files{
+	background-color: white;
+	border-radius: 0.65rem;
+	border: 1px solid var(--gray-02);
+	/* flex: 1; */
+	padding: 4px;
+	max-width: 100%;
+	min-width: 0;
+	display: flex;
+	flex-wrap: wrap;
+}
+.doc-entry-file-container{
+	border-radius: 6px;
+	margin: 4px;
+	background-color: thistle;
+	width: 100px;
+	height: 80px;
+}
+.doc-entry-file{
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	max-width: 80%;
+	min-width: 0%;
+	background-color: lime;
+	margin: 0 auto;
+}
+.doc-entry-file span{
+	font-size: 56px;
+	/* padding: auto; */
+	width: 90%;
+	height: 90%;
+}.doc-entry-file-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	direction: rtl;
+	word-break: break-all;
+    white-space: nowrap;
 }
 .doc-entry-stats{
     font-size: 10px;

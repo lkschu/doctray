@@ -3,13 +3,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"html"
+	"html/template"
 	"io"
 	"io/fs"
 	"math/rand"
 	"net/http"
-	"html"
-	"html/template"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,7 +27,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-
 // TODO: the (html/)template.HTML type (which is an alias for a string) can be used to pass html tags into the template
 //  otherwise they are escaped
 // TODO: this can be used in the future to add very limited markdown rendering
@@ -42,6 +42,45 @@ func rand_seq(n int) string {
 		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
+}
+
+var known_file_suffixes = map[string]string{
+	// Documents
+	".pdf": "picture_as_pdf",
+	".md": "markdown",
+	".txt": "description",
+	".doc": "description",
+	".docx": "description",
+
+	// Images
+	".jpg": "imagesmode",
+	".jpeg": "imagesmode",
+	".png": "imagesmode",
+	".webp": "imagesmode",
+
+	// Audio
+	".mp3":"music_note",
+	".wav":"music_note",
+
+	// Movies
+	".mkv": "movie",
+	".webm": "movie",
+	".mp4": "movie",
+	".avi": "movie",
+	".mov": "movie",
+
+	// Program
+	".sh": "terminal",
+	".lua": "terminal",
+	".ts": "terminal",
+	".js": "terminal",
+	".py": "terminal",
+	".go": "terminal",
+	".c": "terminal",
+	".h": "terminal",
+
+	// Default
+	".default": "draft",
 }
 
 
@@ -74,6 +113,15 @@ type docentry_file struct {
 	Url string			`json:"url"`
 	Name string         `json:"name"`
 	OrgName string      `json:"orgname"`
+	Icon string			`json:"icon"`
+}
+func (d docentry_file) String() string {
+	b,err := json.Marshal(d)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	return string(b)
 }
 
 // INFO: this is (so far) not really needed
@@ -177,7 +225,25 @@ func get_data(sub string) []test_data {
 		if d.Type != doctype_file && d.Type != doctype_mesage && d.Type != doctype_image {
 			data[i].Type = doctype_mesage
 		}
+		fmt.Println("ping")
+		if len(d.Files) > 0 {
+			fmt.Println("pong")
+			for j,f := range d.Files {
+				fmt.Println("pping")
+				if f.Icon == "" {
+					fmt.Println("ppong")
+					icon, success := known_file_suffixes[filepath.Ext(f.OrgName)]
+					if success {
+						data[i].Files[j].Icon = icon
+					} else {
+						data[i].Files[j].Icon = known_file_suffixes[".default"]
+					}
+					fmt.Println(f.String())
+				}
+			}
+		}
 	}
+	fmt.Println(data[len(data)-1].String())
 	return data
 }
 func set_data(d []test_data, sub string) {
@@ -391,9 +457,9 @@ func main() {
 				c.Header("Content-Type", "text/html")
 				answer := ""
 				if test_data_array[toggle_star].Starred {
-					answer = "<div class=\"doc-entry-button-fav starred\"> <button hx-post=\"/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
+					answer = "<div class=\"doc-entry-button-fav starred\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
 				} else {
-					answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/doc-star\" hx-vals='{\"id\":" + id_str +"}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
+					answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str +"}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
 				}
 				c.String(http.StatusOK, answer)
 			}

@@ -29,9 +29,21 @@
 
     <div>
 {{ end }}
+
 {{ define "base/doc-url.tmpl" }}
-	{{ len . }}
-	{{ range $file := . }}
-	( <a target="_blank" href="{{$file.Url}}">⬇️blabla {{$file.Name}}</a> )
-	{{end}}
+	{{ len . }}:
+
+	<div class="doc-entry-files-container debug">
+		<div class="doc-entry-files debug">
+
+		{{ range $file := . }}
+			<a href="{{ $file.Url }}" target="_blank" class="doc-entry-file-download">
+			<div class="doc-entry-file-container debug">
+					<span class="material-symbols-outlined">{{ $file.Icon }}</span>
+					<div class="doc-entry-file-name"><span>{{ $file.OrgName }}</span></div>
+			</div></a>
+		{{end}}
+
+		</div>
+	</div>
 {{ end }}

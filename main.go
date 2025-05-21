@@ -98,6 +98,8 @@ const (
 	token_italic_close string = "</i>"
 	token_strike_open string = "<s>"
 	token_strike_close string = "</s>"
+	token_tt_open string = "<tt>"
+	token_tt_close string = "</tt>"
 )
 type token_position struct {
 	token string
@@ -145,6 +147,29 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 				i+=1
 			}
 		case '~':
+			if i == 0 {
+				token_positions = append(token_positions, token_position{token: token_strike_open, position: i})
+			} else if i == len(line_bytes)-1 {
+				token_positions = append(token_positions, token_position{token: token_strike_close, position: i})
+			} else {
+				if line_bytes[i-1] == ' ' {
+					token_positions = append(token_positions, token_position{token: token_strike_open, position: i})
+				} else if i < len(line_bytes)-1 && line_bytes[i+1] == ' '{
+					token_positions = append(token_positions, token_position{token: token_strike_close, position: i})
+				}
+			}
+		case '`':
+			if i == 0 {
+				token_positions = append(token_positions, token_position{token: token_tt_open, position: i})
+			} else if i == len(line_bytes)-1 {
+				token_positions = append(token_positions, token_position{token: token_tt_close, position: i})
+			} else {
+				if line_bytes[i-1] == ' ' {
+					token_positions = append(token_positions, token_position{token: token_tt_open, position: i})
+				} else if i < len(line_bytes)-1 && line_bytes[i+1] == ' '{
+					token_positions = append(token_positions, token_position{token: token_tt_close, position: i})
+				}
+			}
 		}
 		i+=1
 	}
@@ -154,6 +179,7 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 	var bold_tag token_position
 	var italic_tag token_position
 	var strike_tag token_position
+	var tt_tag token_position
 	matched_tags := make([]token_position,0)
 	for t_idx < len(token_positions) {
 		switch token_positions[t_idx].token {
@@ -180,6 +206,14 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 				matched_tags = append(matched_tags, strike_tag)
 				matched_tags = append(matched_tags, token_positions[t_idx])
 				strike_tag = token_position{}
+			}
+		case token_tt_open:
+			tt_tag = token_positions[t_idx] // old tag can be overwritten
+		case token_tt_close:
+			if tt_tag != (token_position{}) {
+				matched_tags = append(matched_tags, tt_tag)
+				matched_tags = append(matched_tags, token_positions[t_idx])
+				tt_tag = token_position{}
 			}
 		}
 		t_idx += 1
@@ -208,7 +242,8 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 	return line_rebuilt
 }
 
-// TODO: missing: monospace, code blocks, strikethrough, etc...
+// TODO: codeblocks should be implemented early in this function
+// TODO: missing: code blocks...
 // Add bold/italic/strikethrough, inline code and codeblocks, itemize, url highlighting, etc..
 func add_formatting_tags_to_string(s string) string{
 	var return_string strings.Builder
@@ -534,6 +569,7 @@ func main() {
 				var title string
 				if len(titles) > 0 {
 					title = titles[0]
+					title = strings.TrimSpace(title)
 					title = strings.ReplaceAll(title,"\r","")
 					title = html.EscapeString(title)
 				} else {

@@ -355,6 +355,14 @@ input[type="file"] {
 	box-shadow: none !important;
 	margin-left: 0;
 }
+tt {
+	display: inline;
+	font-family: 'Courier New', Courier, monospace;
+	/* background-color: var(--gray-01); */
+	background-color: white;
+	padding: 4px;
+	border-radius: 4px;
+}
 /* ul .markdown-list-inner, ul .markdown-list-outer { */
 /* 	padding-inline-start: 0px!important; */
 /* 	margin: 0!important; */

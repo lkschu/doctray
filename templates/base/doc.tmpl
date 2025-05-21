@@ -6,9 +6,12 @@
 
                 <div class="doc-entry-content debug">
                     <div class="doc-entry-type-container debug">
-                        <div style="white-space:pre-line">{{.Title}}</div>
-                        {{ if .Files }}{{ template "base/doc-url.tmpl" .Files }}{{ end }}
-                    </div>
+                        <!--<div style="white-space:pre-line">.Title</div>-->
+                        {{.Title}}
+					</div>
+
+					{{ if .Files }}{{ template "base/doc-url.tmpl" .Files }}{{ end }}
+
                     <div class="doc-entry-stats debug">
                         <div class="doc-entry-stat-id debug">{{.DocID}}</div>
                         <div class="doc-entry-stat-date debug">{{ .Date }}</div>
@@ -31,7 +34,6 @@
 {{ end }}
 
 {{ define "base/doc-url.tmpl" }}
-	{{ len . }}:
 
 	<div class="doc-entry-files-container debug">
 		<div class="doc-entry-files debug">

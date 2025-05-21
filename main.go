@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sort"
 	"time"
 
 	"path"
@@ -84,7 +85,180 @@ var known_file_suffixes = map[string]string{
 }
 
 
+func assert(a bool) {
+	if !a {
+		panic(a)
+	}
+}
 
+const (
+	token_bold_open string = "<b>"
+	token_bold_close string = "</b>"
+	token_italic_open string = "<i>"
+	token_italic_close string = "</i>"
+	token_strike_open string = "<s>"
+	token_strike_close string = "</s>"
+)
+type token_position struct {
+	token string
+	position int
+}
+
+
+// TODO: refactor!!
+func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
+	// tokenize string
+	token_positions := make([]token_position, 0)
+	i:= 0
+	for i < len(line_bytes) {
+		switch line_bytes[i]{
+		case '*':
+			double := i < len(line_bytes)-1 && line_bytes[i+1] == '*'
+			if i == 0 {
+				if double {
+					token_positions = append(token_positions, token_position{token: token_bold_open, position: i})
+				} else {
+					token_positions = append(token_positions, token_position{token: token_italic_open, position: i})
+				}
+			} else if i == len(line_bytes) -1 || i== len(line_bytes)-2 && double {
+				if double {
+					token_positions = append(token_positions, token_position{token: token_bold_close, position: i})
+				} else {
+					token_positions = append(token_positions, token_position{token: token_italic_close, position: i})
+				}
+			} else {
+				if double {
+					if line_bytes[i-1] == ' ' {
+						token_positions = append(token_positions, token_position{token: token_bold_open, position: i})
+					} else if i < len(line_bytes)-2 && line_bytes[i+2] == ' '{
+						token_positions = append(token_positions, token_position{token: token_bold_close, position: i})
+					}
+				} else {
+					if line_bytes[i-1] == ' ' {
+						token_positions = append(token_positions, token_position{token: token_italic_open, position: i})
+					} else if i < len(line_bytes)-1 && line_bytes[i+1] == ' '{
+						token_positions = append(token_positions, token_position{token: token_italic_close, position: i})
+					}
+				}
+			}
+			if double {
+				i+=1
+			}
+		case '~':
+		}
+		i+=1
+	}
+
+	// trim to relevant tokens
+	t_idx := 0
+	var bold_tag token_position
+	var italic_tag token_position
+	var strike_tag token_position
+	matched_tags := make([]token_position,0)
+	for t_idx < len(token_positions) {
+		switch token_positions[t_idx].token {
+		case token_bold_open:
+			bold_tag = token_positions[t_idx] // old tag can be overwritten
+		case token_bold_close:
+			if bold_tag != (token_position{}) {
+				matched_tags = append(matched_tags, bold_tag)
+				matched_tags = append(matched_tags, token_positions[t_idx])
+				bold_tag = token_position{}
+			}
+		case token_italic_open:
+			italic_tag = token_positions[t_idx] // old tag can be overwritten
+		case token_italic_close:
+			if italic_tag != (token_position{}) {
+				matched_tags = append(matched_tags, italic_tag)
+				matched_tags = append(matched_tags, token_positions[t_idx])
+				italic_tag = token_position{}
+			}
+		case token_strike_open:
+			strike_tag = token_positions[t_idx] // old tag can be overwritten
+		case token_strike_close:
+			if strike_tag != (token_position{}) {
+				matched_tags = append(matched_tags, strike_tag)
+				matched_tags = append(matched_tags, token_positions[t_idx])
+				strike_tag = token_position{}
+			}
+		}
+		t_idx += 1
+	}
+	sort.Slice(matched_tags, func(i,j int) bool { return matched_tags[i].position < matched_tags[j].position })
+
+	if len(matched_tags) == 0 {
+		return line_bytes
+	}
+
+
+	// Replace tokens with html tags
+	var line_rebuilt []byte
+	last_idx := 0
+	for _,tag := range matched_tags {
+		assert(last_idx <= len(line_bytes))
+		line_rebuilt = append(line_rebuilt,line_bytes[last_idx:tag.position]...)
+		if tag.token == token_bold_open || tag.token == token_bold_close {
+			last_idx = tag.position + 2
+		} else {
+			last_idx = tag.position + 1
+		}
+
+		line_rebuilt = append(line_rebuilt, []byte(tag.token)...)
+	}
+	return line_rebuilt
+}
+
+// TODO: missing: monospace, code blocks, strikethrough, etc...
+// Add bold/italic/strikethrough, inline code and codeblocks, itemize, url highlighting, etc..
+func add_formatting_tags_to_string(s string) string{
+	var return_string strings.Builder
+	return_string.WriteString("")
+	for _,line := range strings.Split(s, "\n") {
+		line_bytes := []byte(line)
+		fmt.Println(string(line_bytes))
+		line_bytes = add_formatting_tags__add_text_decoration(line_bytes)
+
+		new_line := string(line_bytes)
+		find_first_regular_character := func (bytes []byte) int {
+			ret := 0
+			before_dash := true
+			for i,b := range bytes {
+				if b != ' ' && b != '-' {
+					return ret
+				}
+				if b == '-' && before_dash {
+					before_dash = false
+				}
+				if b == ' ' && !before_dash {
+					ret = i+1
+				}
+			}
+			return ret
+		}
+
+		fmt.Println(string(line_bytes))
+		list_added := false
+		if strings.HasPrefix(new_line, "- ") || strings.HasPrefix(new_line, " - ") {
+			list_added = true
+			drop_idx := find_first_regular_character(line_bytes)
+			line_bytes = line_bytes[drop_idx:]
+			line_bytes = append([]byte("<ul><div class=\"markdown-list-outer\"><li>"), line_bytes...)
+			line_bytes = append(line_bytes,[]byte("</li></div></ul>")...)
+		} else if strings.HasPrefix(new_line, "  - ") || strings.HasPrefix(new_line, "   - ") {
+			list_added = true
+			drop_idx := find_first_regular_character(line_bytes)
+			line_bytes = line_bytes[drop_idx:]
+			line_bytes = append([]byte("<ul><div class=\"markdown-list-inner\"><li>"), line_bytes...)
+			line_bytes = append(line_bytes,[]byte("</li></div></ul>")...)
+		}
+		fmt.Println("Wrapped:{" + string(line_bytes) + "}\n\n")
+		return_string.WriteString(string(line_bytes))
+		if !list_added {
+			return_string.WriteString("<br>")
+		}
+	}
+	return return_string.String()
+}
 
 
 func ExampleConfigAuthentik() (c *oidcauth.Config) {
@@ -130,6 +304,8 @@ const (
 	doctype_mesage string = "msg"
 	doctype_image string = "image"
 )
+
+type test_data_rendered test_data
 
 type test_data struct {
 	DocID int           `json:"id"`
@@ -198,6 +374,19 @@ func get_data_new_id(data *[]test_data) int {
 	return new_id + 1
 }
 
+
+func render_data(data []test_data) []test_data {
+	ret := make([]test_data, len(data))
+	for i,r := range data {
+		fmt.Println(data[i].String())
+		data[i].Title = template.HTML(add_formatting_tags_to_string(string(r.Title)))
+		ret[i] = data[i]
+		fmt.Println(data[i].String())
+	}
+	return ret
+}
+
+
 func get_data(sub string) []test_data {
 	file, err := os.Open(fmt.Sprintf("./data/%s.json", sub))
 	defer file.Close()
@@ -225,13 +414,9 @@ func get_data(sub string) []test_data {
 		if d.Type != doctype_file && d.Type != doctype_mesage && d.Type != doctype_image {
 			data[i].Type = doctype_mesage
 		}
-		fmt.Println("ping")
 		if len(d.Files) > 0 {
-			fmt.Println("pong")
 			for j,f := range d.Files {
-				fmt.Println("pping")
 				if f.Icon == "" {
-					fmt.Println("ppong")
 					icon, success := known_file_suffixes[filepath.Ext(f.OrgName)]
 					if success {
 						data[i].Files[j].Icon = icon
@@ -332,7 +517,7 @@ func main() {
 			sub := get_uuid(c)
 			test_data_array := get_data(sub)
 			set_data(test_data_array, sub)
-			c.HTML(http.StatusOK, "posts/tray.tmpl", test_data_array)
+			c.HTML(http.StatusOK, "posts/tray.tmpl", render_data(test_data_array))
 		})
 
 		router_tray.POST("/doc-create", func(c *gin.Context){
@@ -349,6 +534,7 @@ func main() {
 				var title string
 				if len(titles) > 0 {
 					title = titles[0]
+					title = strings.ReplaceAll(title,"\r","")
 					title = html.EscapeString(title)
 				} else {
 					title = ""
@@ -385,7 +571,7 @@ func main() {
 			if ret {
 				sub := get_uuid(c)
 				// c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-				c.HTML(http.StatusOK, "base/doc-list.tmpl", get_data(sub))
+				c.HTML(http.StatusOK, "base/doc-list.tmpl", render_data(get_data(sub)))
 			}
 		})
 

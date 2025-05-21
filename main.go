@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sort"
 	"time"
+	"regexp"
 
 	"path"
 	// "path/filepath"
@@ -242,6 +243,30 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 	return line_rebuilt
 }
 
+func add_formatting_tags__add_url(line_bytes []byte) []byte {
+	loc := find_url_in_string(line_bytes)
+	if  loc == nil {
+		return line_bytes
+	}
+	url := line_bytes[loc[0]:loc[1]]
+	ret_bytes := make([]byte, 0)
+	ret_bytes = append(ret_bytes, line_bytes[0:loc[0]]...)
+	ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("<a href=\"%s\" target=\"_blank\">", url))...)
+	ret_bytes = append(ret_bytes, url...)
+	ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("</a>"))...)
+	ret_bytes = append(ret_bytes, line_bytes[loc[1]:]...)
+	return ret_bytes
+}
+
+var url_regex *regexp.Regexp
+func find_url_in_string(l []byte) []int{
+	if url_regex == nil {
+		url_regex, _ = regexp.Compile(`\b((https?:\/\/)?((localhost|(\d{1,3}\.){3}\d{1,3}|([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}))(:\d{2,5})?(\/[^\s]*)?)\b`)
+	}
+	return url_regex.FindIndex(l)
+}
+
+
 // TODO: codeblocks should be implemented early in this function
 // TODO: missing: code blocks...
 // Add bold/italic/strikethrough, inline code and codeblocks, itemize, url highlighting, etc..
@@ -249,21 +274,25 @@ func add_formatting_tags_to_string(s string) string{
 	var return_string strings.Builder
 	return_string.WriteString("")
 	content_split_by_lines := strings.Split(s, "\n")
-	skip_until_this_idx_because_code_block := 0
+	skip_until_this_idx_because_code_block := -1
 	skip_searching_for_new_code_blocks := false
 	for line_idx,line := range content_split_by_lines {
 
 		// Extract code blocks
-		if line_idx < skip_until_this_idx_because_code_block {
+		if line_idx < skip_until_this_idx_because_code_block { // content in matching codeblock tags
 			return_string.WriteString(line)
 			return_string.WriteString("<br>")
 			skip_searching_for_new_code_blocks = true
 			continue
 		}
-		if line_idx == skip_until_this_idx_because_code_block {
+		if line_idx == skip_until_this_idx_because_code_block { // the line closing the codeblock
 			return_string.WriteString("</tt>")
 			if len(line) > 3 {
+				return_string.WriteString("<br>")
 				line = string([]byte(line)[3:])
+			} else {
+				skip_searching_for_new_code_blocks = false
+				continue
 			}
 		}
 		if !skip_searching_for_new_code_blocks && strings.HasPrefix(line, "```") {
@@ -290,6 +319,7 @@ func add_formatting_tags_to_string(s string) string{
 		line_bytes := []byte(line)
 		fmt.Println(string(line_bytes))
 		line_bytes = add_formatting_tags__add_text_decoration(line_bytes)
+		line_bytes = add_formatting_tags__add_url(line_bytes)
 
 		new_line := string(line_bytes)
 		find_first_regular_character := func (bytes []byte) int {
@@ -537,7 +567,7 @@ func main() {
 	router.LoadHTMLGlob("templates/**/*")
 
 	// Session Config (Basic cookies)
-	store := cookie.NewStore([]byte("secret"), nil)     // Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
+	store := cookie.NewStore([]byte("secret"), nil)     // TODO: FIXME: Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
 	router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
 	router.MaxMultipartMemory = 10 << 20 // max 10 MiB
@@ -592,6 +622,8 @@ func main() {
 			set_data(test_data_array, sub)
 			c.HTML(http.StatusOK, "posts/tray.tmpl", render_data(test_data_array))
 		})
+
+		router_tray.POST("/ping", func(ctx *gin.Context) {ctx.String(http.StatusOK, "All fine")})
 
 		router_tray.POST("/doc-create", func(c *gin.Context){
 			ret := func (c*gin.Context) bool { // Ugly hack to let the defer update the data before we use it in the tmpl

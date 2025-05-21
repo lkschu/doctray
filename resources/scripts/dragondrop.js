@@ -92,7 +92,7 @@ function dropHandler(ev) {
         data.append('title', text_input)
         // htmx.ajax('POST', '/doc-create', {target:"#doc-container", swap:'outerHTML'}, data)
         console.log(`source: ${ev.currentTarget}`)
-        htmx.ajax('POST', '/doc-create', {values: {files:data.getAll('files'),title:text_input}, source:ev.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
+        htmx.ajax('POST', '/tray/doc-create', {values: {files:data.getAll('files'),title:text_input}, source:ev.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
 
         //// const response = fetch('/doc-create', {
         ////     method: 'POST',

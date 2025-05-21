@@ -1,4 +1,5 @@
 {{ define "posts/tray.tmpl" }}
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8' />
@@ -32,6 +33,12 @@
             </li>
         </ul>
     </div>
+	<script>
+	setInterval(() => {
+        htmx.ajax('POST', '/tray/ping', {values: {title:"ping sent"}, swap:'none'})
+        //htmx.ajax('GET', '/login', {swap:'none'})
+	}, 1 * 50 * 1000);
+	</script>
     {{ template "base/doc-list.tmpl" . }}
     </div>
 

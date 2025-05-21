@@ -349,21 +349,37 @@ input[type="file"] {
 }
 .doc-entry-type-container{
     font-size: 15px;
-    background-color: var(--color-02);
+    /* background-color: var(--color-02); */
 	padding: 5px;
     margin-bottom: 0.4rem;
+
+	/* Break long words */
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+	word-break: break-all;
+	white-space: normal;
 }
 .markdown-list-inner *, .markdown-list-outer * {
 	box-shadow: none !important;
 	margin-left: 0;
 }
+.markdown-codeblock {
+	min-width: 16rem;
+	border-radius: 8px;
+	display: block;
+	padding: 8px;
+}
 tt {
-	display: inline;
+	display: inline-block;
+	box-decoration-break: clone; /* each line is rendered as its own block, otherwise <br> breaks padding */
 	font-family: 'Courier New', Courier, monospace;
 	/* background-color: var(--gray-01); */
 	background-color: white;
-	padding: 4px;
+	padding: 2px 4px;
+	margin: 8px;
 	border-radius: 4px;
+	/* width: calc(100% -16px); */
+	box-sizing: border-box;
 }
 /* ul .markdown-list-inner, ul .markdown-list-outer { */
 /* 	/1* padding-inline-start: 0px!important; *1/ */

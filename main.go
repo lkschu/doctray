@@ -98,7 +98,7 @@ const (
 	token_italic_close string = "</i>"
 	token_strike_open string = "<s>"
 	token_strike_close string = "</s>"
-	token_tt_open string = "<tt>"
+	token_tt_open string = "<tt class=\"markdown-code\">"
 	token_tt_close string = "</tt>"
 )
 type token_position struct {
@@ -248,7 +248,45 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 func add_formatting_tags_to_string(s string) string{
 	var return_string strings.Builder
 	return_string.WriteString("")
-	for _,line := range strings.Split(s, "\n") {
+	content_split_by_lines := strings.Split(s, "\n")
+	skip_until_this_idx_because_code_block := 0
+	skip_searching_for_new_code_blocks := false
+	for line_idx,line := range content_split_by_lines {
+
+		// Extract code blocks
+		if line_idx < skip_until_this_idx_because_code_block {
+			return_string.WriteString(line)
+			return_string.WriteString("<br>")
+			skip_searching_for_new_code_blocks = true
+			continue
+		}
+		if line_idx == skip_until_this_idx_because_code_block {
+			return_string.WriteString("</tt>")
+			if len(line) > 3 {
+				line = string([]byte(line)[3:])
+			}
+		}
+		if !skip_searching_for_new_code_blocks && strings.HasPrefix(line, "```") {
+			find_matching_pair := line_idx+1
+			for find_matching_pair < len(content_split_by_lines) {
+				if strings.HasPrefix(content_split_by_lines[find_matching_pair], "```") {
+					break
+				}
+				find_matching_pair += 1
+			}
+			if find_matching_pair > line_idx+1 {
+				skip_until_this_idx_because_code_block = find_matching_pair
+				return_string.WriteString("<tt class=\"markdown-codeblock\">")
+				if len(line) > 3 {
+					return_string.WriteString(string([]byte(line)[3:]))
+					return_string.WriteString("<br>")
+				}
+				continue
+			}
+		}
+		skip_searching_for_new_code_blocks = false
+
+
 		line_bytes := []byte(line)
 		fmt.Println(string(line_bytes))
 		line_bytes = add_formatting_tags__add_text_decoration(line_bytes)

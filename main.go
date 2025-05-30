@@ -567,7 +567,7 @@ func main() {
 	router.LoadHTMLGlob("templates/**/*")
 
 	// Session Config (Basic cookies)
-	store := cookie.NewStore([]byte("secret"), nil)     // TODO: FIXME: Do not use "secret", nil in production. This sets the keypairs for auth, encryption of the cookies.
+	store := cookie.NewStore([]byte("secret"), nil)     // TODO: FIXME: Do not use "secret", in production. This sets the keypairs for auth, encryption of the cookies.
 	router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
 	router.MaxMultipartMemory = 10 << 20 // max 10 MiB

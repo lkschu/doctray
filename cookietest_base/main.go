@@ -25,7 +25,8 @@ import (
 )
 
 const (
-DefaultAuthenticatedURL = "/tralala"
+	DefaultAuthenticatedURL = "/tralala"
+	DefaultSessionTimeout = 60 * 60 * 3		// 3 hours?
 )
 
 
@@ -219,19 +220,21 @@ func (state *AuthState) callback_handler() func(ctx *gin.Context) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		data, err := json.MarshalIndent(resp, "", "    ")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 
-		new_cookie := cookie_content{}.New("Sub = TODO")
+
+		new_cookie := cookie_content{}.NewFromUserID(idToken.Subject)
 		new_cookie.Authorized = true
 		new_cookie.ToCookie(ctx)
 
 
+		// data, err := json.MarshalIndent(resp, "", "    ")
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	return
+		// }
 		// w.Write(append(data, []byte("\nYada yada yada")...))
-		fmt.Println(string(data))
+		// fmt.Println(string(data))
+		// fmt.Println(idToken.Subject)
 		ctx.Redirect(http.StatusFound, redirection_url)
 	}
 }
@@ -243,7 +246,7 @@ type cookie_content struct {
 	Authorized bool		`json:"auth"`
 	// ExpiresAtMillis int		`json:"exp"`
 }
-func (cookie_content) New(sub string) cookie_content {
+func (cookie_content) NewFromUserID(sub string) cookie_content {
 	now := int(time.Now().UnixMilli())
 	c := cookie_content{Sub: sub, IssuedAt: now}
 	return c
@@ -274,7 +277,7 @@ func (c cookie_content) ToCookie(ctx *gin.Context) {
 	http_cookie := &http.Cookie{
 		Name:     "session",
 		Value:    c.ToJSON(),
-		MaxAge:   int(time.Minute.Seconds()*2),
+		MaxAge:   DefaultSessionTimeout,
 		Secure:   ctx.Request.TLS != nil,
 		HttpOnly: true,
 	}

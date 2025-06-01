@@ -1,4 +1,5 @@
-module main
+// module main
+module cookietestbase
 
 go 1.24.3
 

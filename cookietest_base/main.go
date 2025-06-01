@@ -5,7 +5,6 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,28 +13,24 @@ import (
 	"os"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
-	"golang.org/x/net/context"
-	"golang.org/x/oauth2"
-
-	// "github.com/gin-contrib/sessions"
-	// "github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 
+	"cookietestbase/internal/openidauth"
 )
 
 const (
-	DefaultAuthenticatedURL = "/tralala"
 	DefaultSessionTimeout = 60 * 60 * 3		// 3 hours?
 )
 
 
-func randString(nByte int) (string, error) {
+func randBytes(nByte int) []byte {
 	b := make([]byte, nByte)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		return "", err
+		panic(err)
 	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+	return b
 }
 
 
@@ -58,183 +53,6 @@ func setCallbackCookieCtx(ctx *gin.Context, name, value string) {
 }
 
 
-type AuthState struct {
-	context		*context.Context
-	provider	*oidc.Provider
-	verifier	*oidc.IDTokenVerifier
-	oauth2Conf  *oauth2.Config
-}
-func NewAuthState(ctx context.Context, clientID string, clientSecret string, issuerUrl string, redirectURL string) AuthState{
-	provider, err := oidc.NewProvider(ctx, issuerUrl)
-	if err != nil {
-		log.Fatal(err)
-	}
-	oidcConfig := &oidc.Config{
-		ClientID: clientID,
-	}
-	verifier := provider.Verifier(oidcConfig)
-	config := oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Endpoint:     provider.Endpoint(),
-		RedirectURL:  redirectURL,
-		// Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
-		Scopes:       []string{oidc.ScopeOpenID, "sub", "email"},
-	}
-	return AuthState{provider: provider, verifier: verifier, oauth2Conf: &config, context: &ctx}
-}
-func (state *AuthState) login(ctx *gin.Context){
-	previousURL := ctx.Request.RequestURI // Current URL
-	if previousURL == "" {
-		previousURL = DefaultAuthenticatedURL
-	}
-
-	w := ctx.Writer
-	fmt.Println("Set nonce/state cookie")
-	lstate, err := randString(16)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	nonce, err := randString(16)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	auth_callback_cookie := cookie_auth_content{State: lstate, Nonce: nonce, Redirect_to: previousURL}
-	setCallbackCookieCtx(ctx, "session_auth", base64.RawURLEncoding.EncodeToString([]byte(auth_callback_cookie.ToJSON())))
-
-	ctx.Redirect(http.StatusFound, state.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
-}
-func (state *AuthState) logout() gin.HandlerFunc{
-	// r := ctx.Request
-	// _, err := ctx.Cookie("session")
-	// if err != nil {
-	// 	c := &http.Cookie{
-	// 		Name:     "session",
-	// 		Value:    "",
-	// 		MaxAge:   -1,
-	// 		Secure:   r.TLS != nil,
-	// 		HttpOnly: true,
-	// 	}
-	// 	setLocalCookie(ctx, c)
-	// }
-	return func (ctx *gin.Context) {
-		unsetLocalCookie(ctx,"session")
-	}
-}
-func (state *AuthState) ensure_loggedin() gin.HandlerFunc{
-	return func(ctx *gin.Context) {
-		fmt.Println("Erst ensure_loggedin")
-		w := ctx.Writer
-		session_cookie, err := ctx.Cookie("session")
-		fmt.Println("LOGIN: <", session_cookie, ">")
-		// if err != nil || auth_cookie.Value != "Y" {
-		if err != nil || session_cookie == "" {
-			fmt.Println("Unauthorized")
-			state.login(ctx)
-			return
-		} else {
-			cookie := FromJSON(session_cookie)
-			if cookie.Authorized == false {
-				fmt.Println("Unauthorized")
-				state.login(ctx)
-				return
-			} else {
-				fmt.Println("Authorized!")
-				w.Write([]byte("Authorized!"))
-			}
-
-		}
-	}
-
-}
-func (state *AuthState) callback_handler() func(ctx *gin.Context) {
-	return func(ctx *gin.Context) {
-		// w http.ResponseWriter, r *http.Request
-		r := ctx.Request
-		w := ctx.Writer
-		// state_cookie, err := r.Cookie("state")
-		state_cookie_json, err := r.Cookie("session_auth")
-		if err != nil {
-			http.Error(w, "state not found", http.StatusBadRequest)
-			return
-		}
-		state_cookie_decoded, err := base64.RawURLEncoding.DecodeString(state_cookie_json.Value)
-		if err != nil {
-			http.Error(w, fmt.Sprint("can't decode cookie json; ", err.Error()), http.StatusBadRequest)
-			return
-		}
-		state_cookie, err := AuthFromJSON(string(state_cookie_decoded))
-		if err != nil {
-			http.Error(w, fmt.Sprint("can't parse cookie from json; ", err.Error()), http.StatusBadRequest)
-			return
-		}
-		fmt.Println(state_cookie.ToJSON())
-
-		if r.URL.Query().Get("state") != state_cookie.State {
-			http.Error(w, "state did not match", http.StatusBadRequest)
-			return
-		}
-
-		oauth2Token, err := state.oauth2Conf.Exchange(*state.context, r.URL.Query().Get("code"))
-		if err != nil {
-			http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		rawIDToken, ok := oauth2Token.Extra("id_token").(string)
-		if !ok {
-			http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
-			return
-		}
-		idToken, err := state.verifier.Verify(*state.context, rawIDToken)
-		if err != nil {
-			http.Error(w, "Failed to verify ID Token: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		if idToken.Nonce != state_cookie.Nonce {
-			http.Error(w, "nonce did not match", http.StatusBadRequest)
-			return
-		}
-
-		redirection_url := state_cookie.Redirect_to
-		if redirection_url == "" {
-			redirection_url = DefaultAuthenticatedURL
-		}
-		fmt.Println("Redirect to: ", redirection_url)
-		// unsetLocalCookie(ctx, "session_auth")
-
-		// oauth2Token.AccessToken = "*REDACTED*"
-
-		resp := struct {
-			OAuth2Token   *oauth2.Token
-			IDTokenClaims *json.RawMessage // ID Token payload is just JSON.
-		}{oauth2Token, new(json.RawMessage)}
-
-		if err := idToken.Claims(&resp.IDTokenClaims); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-
-		new_cookie := cookie_content{}.NewFromUserID(idToken.Subject)
-		new_cookie.Authorized = true
-		new_cookie.ToCookie(ctx)
-
-
-		// data, err := json.MarshalIndent(resp, "", "    ")
-		// if err != nil {
-		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-		// 	return
-		// }
-		// w.Write(append(data, []byte("\nYada yada yada")...))
-		// fmt.Println(string(data))
-		// fmt.Println(idToken.Subject)
-		ctx.Redirect(http.StatusFound, redirection_url)
-	}
-}
 
 type cookie_values interface {
 	FromJSON(string) cookie_values
@@ -243,28 +61,6 @@ type cookie_values interface {
 	ToCookie(*gin.Context)
 }
 
-
-type cookie_auth_content struct {
-	State string		`json:"state"`
-	Nonce string		`json:"nonce"`
-	Redirect_to string	`json:"redir"`
-}
-func AuthFromJSON(cookie string) (cookie_auth_content, error) {
-	var c cookie_auth_content
-	err := json.Unmarshal([]byte(cookie),&c)
-	if err != nil {
-		fmt.Println("Error, can't unmarshall: ", err, "\n\n", cookie)
-		return c, err
-	}
-	return c, nil
-}
-func (c cookie_auth_content) ToJSON() string {
-	new_cookie_json, err := json.Marshal(c)
-	if err != nil {
-		panic("can't marshall cookie")
-	}
-	return string(new_cookie_json)
-}
 
 
 type cookie_content struct {
@@ -322,7 +118,6 @@ func (c cookie_content) ToCookie(ctx *gin.Context) {
 //  - then move to doctray
 
 func main() {
-	ctx := context.Background()
 	clientID, success		:= os.LookupEnv("DOCTRAY_CLIENTID")
 	if ! success {
 		panic("DOCTRAY_CLIENTID not an environment variable!")
@@ -333,13 +128,14 @@ func main() {
 	}
 	issuerUrl    := "https://auth.lukasschumann.de/application/o/test-app/"
 	redirectURL  := "http://127.0.0.1:5555/callback"
-	auth_state := NewAuthState(ctx, clientID, clientSecret, issuerUrl, redirectURL)
+	auth_state := openidauth.NewAuthState(clientID, clientSecret, issuerUrl, redirectURL)
 
 
 	r := gin.Default()
 	// store := cookie.NewStore([]byte("secret~"), nil)
 	// store = cookie.NewStore(securecookie.GenerateRandomKey(32), securecookie.GenerateRandomKey(32))
-	// r.Use(sessions.Sessions("cookiestore", store))
+	store := cookie.NewStore(randBytes(32), randBytes(32))
+	r.Use(sessions.Sessions("session", store))
 
 
 
@@ -361,29 +157,29 @@ func main() {
 		}
 
 	})
-	r.GET("/callback", auth_state.callback_handler())
-	r.GET("/logout", auth_state.logout())
+	r.GET("/callback", auth_state.Callback_handler())
+	r.GET("/logout", auth_state.Logout())
 
 	auth_r := r.Group("/auth")
-	auth_r.Use(auth_state.ensure_loggedin())
+	auth_r.Use(auth_state.Ensure_loggedin())
 	{
 		auth_r.GET("/test", func(ctx *gin.Context) {
 			fmt.Println("Dann inner function")
 
-			auth_cookie, err := ctx.Cookie("session")
-			if err != nil {
+			// auth_cookie, err := ctx.Cookie("session")
+			// s := sessions.Default(ctx)
+			iss := -1
+			// TODO:
+			// cookie_values := FromJSON(auth_cookie)
+			// iss = cookie_values.IssuedAt
+			label := sessions.Default(ctx).Get(auth_state.UserIDLabel())
+			if label == nil {
 				fmt.Println("No Cookie, not authorized!")
 				ctx.JSON(http.StatusUnauthorized, gin.H{"message":fmt.Sprint("unauthorized")})
 				ctx.Abort()
 				return
 			}
-			// s := sessions.Default(ctx)
-			label := "nil"
-			iss := -1
-			cookie_values := FromJSON(auth_cookie)
-			iss = cookie_values.IssuedAt
-			label = cookie_values.Sub
-			ctx.JSON(http.StatusOK, gin.H{"message":fmt.Sprint("authorized: ", label, ", issued: ", iss)})
+			ctx.JSON(http.StatusOK, gin.H{"message":fmt.Sprint("authorized: ", label.(string), ", issued: ", iss)})
 		})
 	}
 

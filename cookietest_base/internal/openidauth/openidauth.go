@@ -1,12 +1,15 @@
-
 package openidauth
 
 import (
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"crypto/rand"
-	"io"
-	"fmt"
+	"time"
+
+	// "time"
 
 	"encoding/base64"
 	"encoding/json"
@@ -15,11 +18,10 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/gin-gonic/gin"
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )
-
 
 
 
@@ -31,11 +33,6 @@ func randString(nByte int) (string, error) {
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
-
-const (
-	CookieName_AuthTemp = "session_auth"
-	DefaultAuthenticatedURL = "/tralala"
-)
 
 
 type cookie_auth_content struct {
@@ -62,25 +59,37 @@ func (c cookie_auth_content) ToJSON() string {
 
 
 
-type AuthState struct {
+type AuthHandler struct {
 	context		*context.Context
 	provider	*oidc.Provider
 	verifier	*oidc.IDTokenVerifier
 	oauth2Conf  *oauth2.Config
+	expirationTimer	int64
 	session_label_nonce string
+	session_label_expired string
 	session_label_state string
 	session_label_redirect string
 	session_label_userid string
+	session_label_sessionid string
+	default_authenticated_url string
 }
-func (a AuthState) UserIDLabel() string {
+func (a AuthHandler) UserIDLabel() string {
 	return a.session_label_userid
 }
-func NewAuthState(clientID string, clientSecret string, issuerUrl string, redirectURL string) AuthState{
+func (a AuthHandler) SessionIDLabel() string {
+	return a.session_label_sessionid
+}
+func NewAuthHandler(clientID string, clientSecret string, sessionExpiration int64, issuerUrl string, redirectURL string) AuthHandler{
 	context := context.Background()
 
 	provider, err := oidc.NewProvider(context, issuerUrl)
 	if err != nil {
 		log.Fatal(err)
+		panic(err)
+	}
+	if sessionExpiration <= 0 {
+		log.Fatal("Auth expiration timer must be  >0!")
+		panic(errors.New("Invalid AuthHandler session expiration!"))
 	}
 	oidcConfig := &oidc.Config{
 		ClientID: clientID,
@@ -94,14 +103,17 @@ func NewAuthState(clientID string, clientSecret string, issuerUrl string, redire
 		// Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 		Scopes:       []string{oidc.ScopeOpenID, "sub", "email"},
 	}
-	return AuthState{provider: provider, verifier: verifier, oauth2Conf: &config, context: &context,
-		session_label_nonce: "auth_nonce", session_label_state: "auth_state",
-		session_label_redirect: "auth_redir", session_label_userid: "sub",}
+	return AuthHandler{provider: provider, verifier: verifier, oauth2Conf: &config, context: &context,
+		expirationTimer: sessionExpiration,
+		session_label_nonce: "auth_nonce", session_label_expired: "expiration",session_label_state: "auth_state",
+		session_label_redirect: "auth_redir", session_label_userid: "sub",
+		default_authenticated_url: "/", session_label_sessionid: "sessionid" }
 }
-func (state *AuthState) Login(ctx *gin.Context){
+
+func (handler *AuthHandler) Login(ctx *gin.Context){
 	previousURL := ctx.Request.RequestURI // Current URL
 	if previousURL == "" {
-		previousURL = DefaultAuthenticatedURL
+		previousURL = handler.default_authenticated_url
 	}
 
 	w := ctx.Writer
@@ -116,74 +128,101 @@ func (state *AuthState) Login(ctx *gin.Context){
 		return
 	}
 
-	// auth_callback_cookie := cookie_auth_content{State: lstate, Nonce: nonce, Redirect_to: previousURL}
-	// setCallbackCookieCtx(ctx, "session_auth", base64.RawURLEncoding.EncodeToString([]byte(auth_callback_cookie.ToJSON())))
-	s := sessions.Default(ctx)
-	s.Set(state.session_label_nonce, nonce)
-	s.Set(state.session_label_state, lstate)
-	s.Set(state.session_label_redirect, previousURL)
-	s.Save()
+	sessionid, err := randString(16)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
 
-	ctx.Redirect(http.StatusFound, state.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
+	s := sessions.Default(ctx)
+	s.Set(handler.session_label_nonce, nonce)
+	s.Set(handler.session_label_state, lstate)
+	s.Set(handler.session_label_redirect, previousURL)
+	s.Set(handler.session_label_sessionid, sessionid)
+	err = s.Save()
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+	}
+
+	ctx.Redirect(http.StatusFound, handler.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
 }
-func (state *AuthState) Logout() gin.HandlerFunc{
-	// r := ctx.Request
-	// _, err := ctx.Cookie("session")
-	// if err != nil {
-	// 	c := &http.Cookie{
-	// 		Name:     "session",
-	// 		Value:    "",
-	// 		MaxAge:   -1,
-	// 		Secure:   r.TLS != nil,
-	// 		HttpOnly: true,
-	// 	}
-	// 	setLocalCookie(ctx, c)
-	// }
+
+func (handler *AuthHandler) Logout() gin.HandlerFunc{
 	return func (ctx *gin.Context) {
 		s := sessions.Default(ctx)
 		s.Clear()
-		// unsetLocalCookie(ctx,"session")
-	}
-
-}
-func (state *AuthState) Ensure_loggedin() gin.HandlerFunc{
-	return func(ctx *gin.Context) {
-		w := ctx.Writer
-		// session_cookie, err := ctx.Cookie("session")
-		session := sessions.Default(ctx)
-		uid := session.Get(state.session_label_userid)
-		if uid == nil {
-			fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
-			state.Login(ctx)
-			return
-		} else {
-			fmt.Println("ENSURE_LOGGEDIN: Authorized!")
-			w.Write([]byte("Authorized!"))
+		s.Options(sessions.Options{MaxAge: -1, Path: "/"}) // this sets the cookie as expired
+		err := s.Save()
+		if err != nil {
+			http.Error(ctx.Writer, "Internal error", http.StatusInternalServerError)
 		}
 	}
 
 }
-func (state *AuthState) Callback_handler() func(ctx *gin.Context) {
+
+func (handler *AuthHandler) IsLoggedIn(ctx *gin.Context) bool {
+	session := sessions.Default(ctx)
+	uid := session.Get(handler.session_label_userid)
+	if uid != nil {
+		exp := session.Get(handler.session_label_expired)
+		now := time.Now().Unix()
+		if exp != nil {
+			if exp.(int64) > now {
+				return true
+			} else {
+				fmt.Println("AuthHandler: expired")
+			}
+		} else {
+			fmt.Println("AuthHandler: no expiration date")
+		}
+	} else {
+		fmt.Println("AuthHandler: no userid")
+	}
+	return false
+}
+
+func (handler *AuthHandler) GetUserID(ctx *gin.Context) (string, error) {
+	if ! handler.IsLoggedIn(ctx) {
+		return "", errors.New("Not logged in")
+	}
+	session := sessions.Default(ctx)
+	uid := session.Get(handler.session_label_userid)
+	if uid != nil {
+		return uid.(string), nil
+	} else {
+		return "", errors.New("No UID")
+	}
+}
+
+func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
 	return func(ctx *gin.Context) {
-		// w http.ResponseWriter, r *http.Request
-		r := ctx.Request
+		if handler.IsLoggedIn(ctx) {
+			fmt.Println("ENSURE_LOGGEDIN: Authorized!")
+		} else {
+			fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
+			handler.Login(ctx)
+		}
+	}
+
+}
+
+func (handler *AuthHandler) Callback_handler() func(ctx *gin.Context) {
+	return func(ctx *gin.Context) {
+		httpRequest := ctx.Request
 		w := ctx.Writer
 
-		// state_cookie, err := r.Cookie("state")
-		// state_cookie_json, err := r.Cookie("session_auth")
-
 		session := sessions.Default(ctx)
-		session_state := session.Get(state.session_label_state)
+		session_state := session.Get(handler.session_label_state)
 		if session_state == nil {
 			http.Error(w, "no state found", http.StatusBadRequest)
 			return
 		}
-		if r.URL.Query().Get("state") != session_state.(string) {
+		if httpRequest.URL.Query().Get("state") != session_state.(string) {
 			http.Error(w, "state did not match", http.StatusBadRequest)
 			return
 		}
 
-		oauth2Token, err := state.oauth2Conf.Exchange(*state.context, r.URL.Query().Get("code"))
+		oauth2Token, err := handler.oauth2Conf.Exchange(*handler.context, httpRequest.URL.Query().Get("code"))
 		if err != nil {
 			http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -193,14 +232,14 @@ func (state *AuthState) Callback_handler() func(ctx *gin.Context) {
 			http.Error(w, "No id_token field in oauth2 token.", http.StatusInternalServerError)
 			return
 		}
-		idToken, err := state.verifier.Verify(*state.context, rawIDToken)
+		idToken, err := handler.verifier.Verify(*handler.context, rawIDToken)
 		if err != nil {
 			http.Error(w, "Failed to verify ID Token: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		session_nonce := session.Get(state.session_label_nonce)
-		if session_state == nil {
+		session_nonce := session.Get(handler.session_label_nonce)
+		if session_nonce == nil {
 			http.Error(w, "no state found", http.StatusBadRequest)
 			return
 		}
@@ -209,8 +248,8 @@ func (state *AuthState) Callback_handler() func(ctx *gin.Context) {
 			return
 		}
 
-		redirection_url := DefaultAuthenticatedURL
-		if redir := session.Get(state.session_label_redirect); redir != nil {
+		redirection_url := handler.default_authenticated_url
+		if redir := session.Get(handler.session_label_redirect); redir != nil {
 			redirection_url = redir.(string)
 		}
 		fmt.Println("Redirect to: ", redirection_url)
@@ -225,25 +264,12 @@ func (state *AuthState) Callback_handler() func(ctx *gin.Context) {
 			return
 		}
 
-
-		session.Set(state.session_label_userid, idToken.Subject)
+		session.Set(handler.session_label_userid, idToken.Subject)
+		session.Set(handler.session_label_expired, time.Now().Unix() + handler.expirationTimer)
 		err = session.Save()
 		if err != nil {
 		    panic(err)
 		}
-		// new_cookie := cookie_content{}.NewFromUserID(idToken.Subject)
-		// new_cookie.Authorized = true
-		// new_cookie.ToCookie(ctx)
-
-
-		// data, err := json.MarshalIndent(resp, "", "    ")
-		// if err != nil {
-		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
-		// 	return
-		// }
-		// w.Write(append(data, []byte("\nYada yada yada")...))
-		// fmt.Println(string(data))
-		// fmt.Println(idToken.Subject)
 		ctx.Redirect(http.StatusFound, redirection_url)
 	}
 }

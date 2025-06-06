@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"errors"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -22,7 +23,10 @@ import (
 
 const (
 	DefaultSessionTimeout = 60 * 60 * 3		// 3 hours?
+	session_label_userid = "sub"
+	session_label_sessionid = "sessionid"
 )
+
 
 
 func randBytes(nByte int) []byte {
@@ -63,16 +67,25 @@ type cookie_values interface {
 
 
 
+// Basically a singleton
 type cookie_content struct {
-	Sub string			`json:"sub"`
-	IssuedAt int		`json:"issued"`
-	Authorized bool		`json:"auth"`
+	UserID string			`json:"sub"`
+	SessionID string		`json:"sid"`
+	Authorized bool			`json:"auth"`
 	// ExpiresAtMillis int		`json:"exp"`
 }
-func (cookie_content) NewFromUserID(sub string) cookie_content {
-	now := int(time.Now().UnixMilli())
-	c := cookie_content{Sub: sub, IssuedAt: now}
-	return c
+func (c cookie_content) Get(ctx *gin.Context) (cookie_content, error) {
+	// now := int(time.Now().UnixMilli())
+	session := sessions.Default(ctx)
+	uid := session.Get(session_label_userid)
+	if uid == nil {
+		return c, errors.New("No UserID found!")
+	}
+	sid := session.Get(session_label_sessionid)
+	if sid == nil {
+		return c, errors.New("No SessionID found!")
+	}
+	return cookie_content{UserID: uid.(string), Authorized: true, SessionID: sid.(string)}, nil
 }
 func FromJSON(cookie string) cookie_content {
 	var c cookie_content
@@ -89,22 +102,22 @@ func (c cookie_content) ToJSON() string {
 	}
 	return string(new_cookie_json)
 }
-func FromCookie(ctx *gin.Context) (cookie_content, error) {
-	cookie_json, err := ctx.Cookie("session")
-	if err != nil {
-	    return cookie_content{}, err
-	}
-	return FromJSON(cookie_json) , nil
-}
 func (c cookie_content) ToCookie(ctx *gin.Context) {
-	http_cookie := &http.Cookie{
-		Name:     "session",
-		Value:    c.ToJSON(),
-		MaxAge:   DefaultSessionTimeout,
-		Secure:   ctx.Request.TLS != nil,
-		HttpOnly: true,
+	// http_cookie := &http.Cookie{
+	// 	Name:     "session",
+	// 	Value:    c.ToJSON(),
+	// 	MaxAge:   DefaultSessionTimeout,
+	// 	Secure:   ctx.Request.TLS != nil,
+	// 	HttpOnly: true,
+	// }
+	// setLocalCookie(ctx,http_cookie)
+	session := sessions.Default(ctx)
+	session.Set(session_label_userid, c.UserID)
+	session.Set(session_label_sessionid, c.SessionID)
+	err := session.Save()
+	if err != nil {
+	    panic(err)
 	}
-	setLocalCookie(ctx,http_cookie)
 }
 
 
@@ -128,28 +141,21 @@ func main() {
 	}
 	issuerUrl    := "https://auth.lukasschumann.de/application/o/test-app/"
 	redirectURL  := "http://127.0.0.1:5555/callback"
-	auth_state := openidauth.NewAuthState(clientID, clientSecret, issuerUrl, redirectURL)
+	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(time.Minute.Seconds()*2),issuerUrl, redirectURL)
 
 
 	r := gin.Default()
 	// store := cookie.NewStore([]byte("secret~"), nil)
 	// store = cookie.NewStore(securecookie.GenerateRandomKey(32), securecookie.GenerateRandomKey(32))
 	store := cookie.NewStore(randBytes(32), randBytes(32))
+	store.Options(sessions.Options{MaxAge: int(time.Minute.Seconds()) * 15, Path: "/"})
 	r.Use(sessions.Sessions("session", store))
 
 
 
 	fmt.Println("hello")
 	r.GET("/test", func(ctx *gin.Context) {
-		c := &http.Cookie{
-			Name:     "TestCookie",
-			Value:    "Yes",
-			MaxAge:   int(time.Minute.Seconds()*5),
-			Secure:   ctx.Request.TLS != nil,
-			HttpOnly: true,
-		}
-		setLocalCookie(ctx, c)
-		cookie,err := FromCookie(ctx)
+		cookie,err := cookie_content{}.Get(ctx)
 		if err != nil {
 			ctx.JSON(http.StatusOK, gin.H{"message":"Testing success", "cookie":err.Error()})
 		} else {
@@ -157,29 +163,29 @@ func main() {
 		}
 
 	})
-	r.GET("/callback", auth_state.Callback_handler())
-	r.GET("/logout", auth_state.Logout())
+	r.GET("/callback", auth_handler.Callback_handler())
+	r.GET("/logout", auth_handler.Logout())
 
 	auth_r := r.Group("/auth")
-	auth_r.Use(auth_state.Ensure_loggedin())
+	auth_r.Use(auth_handler.Ensure_loggedin())
 	{
 		auth_r.GET("/test", func(ctx *gin.Context) {
-			fmt.Println("Dann inner function")
-
-			// auth_cookie, err := ctx.Cookie("session")
-			// s := sessions.Default(ctx)
 			iss := -1
 			// TODO:
 			// cookie_values := FromJSON(auth_cookie)
 			// iss = cookie_values.IssuedAt
-			label := sessions.Default(ctx).Get(auth_state.UserIDLabel())
+			label := sessions.Default(ctx).Get(auth_handler.UserIDLabel())
 			if label == nil {
 				fmt.Println("No Cookie, not authorized!")
 				ctx.JSON(http.StatusUnauthorized, gin.H{"message":fmt.Sprint("unauthorized")})
 				ctx.Abort()
 				return
 			}
-			ctx.JSON(http.StatusOK, gin.H{"message":fmt.Sprint("authorized: ", label.(string), ", issued: ", iss)})
+			sessionid := ""
+			if sessionid_req := sessions.Default(ctx).Get(auth_handler.SessionIDLabel()); sessionid_req != nil {
+				sessionid = sessionid_req.(string)
+			}
+			ctx.JSON(http.StatusOK, gin.H{"message":fmt.Sprint("authorized: ", label.(string), ", issued: ", iss, ", sessionID: ",sessionid)})
 		})
 	}
 

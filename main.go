@@ -23,7 +23,9 @@ import (
 
 	"encoding/json"
 
-	oidcauth "github.com/TJM/gin-gonic-oidcauth"
+	// oidcauth "github.com/TJM/gin-gonic-oidcauth"
+
+	"main/internal/openidauth"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -33,6 +35,12 @@ import (
 //  otherwise they are escaped
 // TODO: this can be used in the future to add very limited markdown rendering
 // TODO: store text html escaped -> add custom html tags for [lists, bold, italic]
+// TODO: inline monospace like this '`mono` mehr text' only shows the monospace text
+// TODO: Define user information and think how to save it (Name,Email,Sub,etc.)
+// TODO: Create a welcome page
+// TODO: handle login constant redirect problem
+// TODO: refactor this page and only then continue with the acutal doctray functionality
+// TODO: doctray tags
 
 
 
@@ -63,6 +71,9 @@ var known_file_suffixes = map[string]string{
 	// Audio
 	".mp3":"music_note",
 	".wav":"music_note",
+	".mka":"music_note",
+	".m4a":"music_note",
+	".m4b":"music_note",
 
 	// Movies
 	".mkv": "movie",
@@ -364,28 +375,6 @@ func add_formatting_tags_to_string(s string) string{
 }
 
 
-func ExampleConfigAuthentik() (c *oidcauth.Config) {
-	c = oidcauth.DefaultConfig()
-	c.ClientID = os.Getenv("DOCTRAY_CLIENTID")
-	if c.ClientID == "" {
-		panic("Can't read: DOCTRAY_CLIENTID")
-	}
-	c.ClientSecret = os.Getenv("DOCTRAY_CLIENTSECRET")
-	if c.ClientSecret == "" {
-		panic("Can't read: DOCTRAY_CLIENTSECRET")
-	}
-	c.IssuerURL = os.Getenv("DOCTRAY_ISSUERURL")
-	if c.IssuerURL == "" {
-		panic("Can't read: DOCTRAY_ISSUERURL")
-	}
-	c.RedirectURL = os.Getenv("DOCTRAY_REDIRECTURL")
-	if c.RedirectURL == "" {
-		panic("Can't read: DOCTRAY_REDIRECTURL")
-	}
-	c.LoginClaim = "sub"
-	return
-}
-
 type docentry_file struct {
 	Url string			`json:"url"`
 	Name string         `json:"name"`
@@ -531,7 +520,7 @@ func get_data(sub string) []test_data {
 			}
 		}
 	}
-	fmt.Println(data[len(data)-1].String())
+	// fmt.Println(data[len(data)-1].String())
 	return data
 }
 func set_data(d []test_data, sub string) {
@@ -561,26 +550,37 @@ func get_uuid(c *gin.Context) string{
 }
 
 func main() {
+	clientID, success		:= os.LookupEnv("DOCTRAY_CLIENTID")
+	if ! success {
+		panic("DOCTRAY_CLIENTID not an environment variable!")
+	}
+	clientSecret,success	:= os.LookupEnv("DOCTRAY_CLIENTSECRET")
+	if ! success {
+		panic("DOCTRAY_CLIENTSECRET not an environment variable!")
+	}
+	issuerUrl    := "https://auth.lukasschumann.de/application/o/test-app/"
+	redirectURL  := "http://127.0.0.1:5555/callback"
+	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(time.Minute.Seconds()*2),issuerUrl, redirectURL)
+
+
+
 	router := gin.Default()
 	router.StaticFile("/favicon.ico", "./resources/favicon.ico")
 	router.Static("/resources", "./resources/")
 	router.LoadHTMLGlob("templates/**/*")
 
 	// Session Config (Basic cookies)
-	store := cookie.NewStore([]byte("secret"), nil)     // TODO: FIXME: Do not use "secret", in production. This sets the keypairs for auth, encryption of the cookies.
-	router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
+	// store = cookie.NewStore(securecookie.GenerateRandomKey(32), securecookie.GenerateRandomKey(32))
+	// "github.com/gorilla/securecookie"
+	store := cookie.NewStore([]byte("secret"), nil)     // TODO: <<<
+	// router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
+	router.Use(sessions.Sessions("session", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
 	router.MaxMultipartMemory = 10 << 20 // max 10 MiB
 
-	// Authentication Config - Uses example dex config
-	// - https://dexidp.io/docs/getting-started/
-	auth, err := oidcauth.GetOidcAuth(ExampleConfigAuthentik())
-	if err != nil {
-		panic("auth setup failed")
-	}
-	router.GET("/login", auth.Login) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
-	router.GET("/callback", auth.AuthCallback)
-	router.GET("/logout", auth.Logout)
+	router.GET("/login", auth_handler.Login()) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
+	router.GET("/callback", auth_handler.Callback_handler())
+	router.GET("/logout", auth_handler.LogoutWithRedirect("/"))
 
 
 
@@ -590,7 +590,7 @@ func main() {
 	router.GET("/", func(c *gin.Context) {
 		session := sessions.Default(c)
 		name := "world"
-		n := session.Get("name")
+		n := session.Get("sub")
 		if n != nil {
 			name = n.(string)
 		}
@@ -601,7 +601,7 @@ func main() {
 	})
 
 
-	router_media := router.Group("/media", auth.AuthRequired())
+	router_media := router.Group("/media", auth_handler.Ensure_loggedin())
 	{
 		router_media.GET("/:item", func(c *gin.Context){
 			item := c.Param("item")
@@ -614,7 +614,7 @@ func main() {
 	}
 
 
-	router_tray := router.Group("/tray", auth.AuthRequired())
+	router_tray := router.Group("/tray", auth_handler.Ensure_loggedin())
 	{
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
@@ -758,11 +758,15 @@ func main() {
 		})
 	}
 
-	private := router.Group("/private", auth.AuthRequired())
+	private := router.Group("/private", auth_handler.Ensure_loggedin())
 	{
 		private.GET("", func(c *gin.Context) {
 			var name, email, sub, out string
-			login := c.GetString(oidcauth.AuthUserKey)
+			// login := c.GetString(oidcauth.AuthUserKey)
+			login, err := auth_handler.GetUserID(c)
+			if err != nil {
+				login = "Error when getting UserID"
+			}
 			session := sessions.Default(c)
 			n := session.Get("name")
 			if n == nil {

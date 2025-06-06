@@ -11,11 +11,13 @@
 <div id="page-container">
     {{ template "base/header.tmpl" }}
 
-    <h1> Welcome to DocTray </h1>
+	<div id="welcome-container"  style="padding:48px 32px">
+		<h1> Welcome to DocTray </h1>
 
-    Hello {{.}}
-    <br>
-    Please authenticate
+		Hello {{.}}
+		<br>
+		Please authenticate
+	</div>
 
 {{ template "base/footer.tmpl" }}
 {{ end }}

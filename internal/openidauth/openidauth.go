@@ -110,41 +110,43 @@ func NewAuthHandler(clientID string, clientSecret string, sessionExpiration int6
 		default_authenticated_url: "/", session_label_sessionid: "sessionid" }
 }
 
-func (handler *AuthHandler) Login(ctx *gin.Context){
-	previousURL := ctx.Request.RequestURI // Current URL
-	if previousURL == "" {
-		previousURL = handler.default_authenticated_url
-	}
+func (handler *AuthHandler) Login() gin.HandlerFunc {
+	return func (ctx *gin.Context) {
+		previousURL := ctx.Request.RequestURI // Current URL
+		if previousURL == "" {
+			previousURL = handler.default_authenticated_url
+		}
 
-	w := ctx.Writer
-	lstate, err := randString(16)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-	nonce, err := randString(16)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
+		w := ctx.Writer
+		lstate, err := randString(16)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		nonce, err := randString(16)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
 
-	sessionid, err := randString(16)
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
+		sessionid, err := randString(16)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
 
-	s := sessions.Default(ctx)
-	s.Set(handler.session_label_nonce, nonce)
-	s.Set(handler.session_label_state, lstate)
-	s.Set(handler.session_label_redirect, previousURL)
-	s.Set(handler.session_label_sessionid, sessionid)
-	err = s.Save()
-	if err != nil {
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-	}
+		s := sessions.Default(ctx)
+		s.Set(handler.session_label_nonce, nonce)
+		s.Set(handler.session_label_state, lstate)
+		s.Set(handler.session_label_redirect, previousURL)
+		s.Set(handler.session_label_sessionid, sessionid)
+		err = s.Save()
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+		}
 
-	ctx.Redirect(http.StatusFound, handler.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
+		ctx.Redirect(http.StatusFound, handler.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
+	}
 }
 
 func (handler *AuthHandler) Logout() gin.HandlerFunc{
@@ -157,7 +159,12 @@ func (handler *AuthHandler) Logout() gin.HandlerFunc{
 			http.Error(ctx.Writer, "Internal error", http.StatusInternalServerError)
 		}
 	}
-
+}
+func (handler *AuthHandler) LogoutWithRedirect(redirect_to string) gin.HandlerFunc{
+	return func (ctx *gin.Context) {
+		handler.Logout()(ctx)
+		ctx.Redirect(http.StatusFound, redirect_to)
+	}
 }
 
 func (handler *AuthHandler) IsLoggedIn(ctx *gin.Context) bool {
@@ -200,7 +207,7 @@ func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
 			fmt.Println("ENSURE_LOGGEDIN: Authorized!")
 		} else {
 			fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
-			handler.Login(ctx)
+			handler.Login()(ctx)
 		}
 	}
 

@@ -88,10 +88,15 @@ def test(url):
 if __name__ == "__main__":
     url1 = "https://www.youtube.com/watch?v=-FI4zp7jEso"
 
-    url2 = "https://www.reddit.com/r/Finanzen/comments/1kcgea3/der_preis_des_d%C3%B6ners_zdfreportage/"
-    url3 = "https://www.reddit.com/r/Damnthatsinteresting/comments/1khxtwt/the_cpr_training_mannequins_face_is_originally/"
+    url20 = "https://www.reddit.com/r/Finanzen/comments/1nhhohn/ich_habe_wieder_arbeit_bin_etwas_planlos_was_ich/" # only text
+    url21 = "https://www.reddit.com/r/Finanzen/comments/1nh93j6/rossmann_otto_und_mediamarkt_wollen_wero_f%C3%BCr/" # link with image
+    url22 = "https://www.reddit.com/r/Finanzen/comments/1nexlq1/wer_von_euch_war_das/" # only image
+    url23 = "https://www.reddit.com/r/Finanzen/comments/1n97ax3/was_machen_die_menschen_da_%C3%BCberhaupt/" # image and text
+
+    # url2 = "https://www.reddit.com/r/Finanzen/comments/1kcgea3/der_preis_des_d%C3%B6ners_zdfreportage/"
+    # url3 = "https://www.reddit.com/r/Damnthatsinteresting/comments/1khxtwt/the_cpr_training_mannequins_face_is_originally/"
     url4 = "https://www.reddit.com/r/Fauxmoi/comments/1khwq2a/new_pope_leo_xiv_cardinal_robert_prevost_has_is/" # gallery
-    url5 = "https://www.reddit.com/r/soccercirclejerk/comments/1khz0ou/goat_goating_subs_closing/"
+    # url5 = "https://www.reddit.com/r/soccercirclejerk/comments/1khz0ou/goat_goating_subs_closing/"
     url6 = "https://www.youtube.com/watch?v=rbkkxqghGNo"
     # print(get_link_preview(url3))
-    print(test(url6))
+    print(test(url23))

@@ -285,7 +285,7 @@ input[type="file"] {
 	border-color: var(--gray-02);
 	border-style: solid;
 	border-width: 1px;
-	height: 100px;
+	height: 110px;
 	padding: 6px;
 
 	min-width: 0;
@@ -306,11 +306,20 @@ input[type="file"] {
 	/* border: 1px solid black; */
 	margin-left: 10px;
 }
+
+a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
+    text-decoration: none;
+    color: inherit;
+}
+
 .doc-entry-web-preview-title{
+    color: var(--gray-09);
 	font-weight: bold;
 	line-height: 1.2;
 }
 .doc-entry-web-preview-description {
+    color: var(--gray-8) !important;
+    /* color: red !important; */
 	flex: 1;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -541,7 +550,7 @@ tt {
     color: var(--gray-08);
     /* box-shadow: 2px 2px 1px red inset; */
 }
-.doc-entry a {
+.doc-entry-type-container a {
     color: var(--color-01);
     font-weight: 300;
     font-family: monospace;

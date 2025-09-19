@@ -26,6 +26,7 @@ import (
 	// oidcauth "github.com/TJM/gin-gonic-oidcauth"
 
 	"main/internal/openidauth"
+	"main/internal/previewbuilder"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -259,22 +260,28 @@ func add_formatting_tags__add_url(line_bytes []byte) []byte {
 	if  loc == nil {
 		return line_bytes
 	}
-	url := line_bytes[loc[0]:loc[1]]
+
 	ret_bytes := make([]byte, 0)
-	ret_bytes = append(ret_bytes, line_bytes[0:loc[0]]...)
-	ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("<a href=\"%s\" target=\"_blank\">", url))...)
-	ret_bytes = append(ret_bytes, url...)
-	ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("</a>"))...)
-	ret_bytes = append(ret_bytes, line_bytes[loc[1]:]...)
+	last_indx := 0
+	for i, _ := range loc {
+		url := line_bytes[loc[i][0]:loc[i][1]]
+		ret_bytes = append(ret_bytes, line_bytes[last_indx:loc[i][0]]...)
+		ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("<a href=\"%s\" target=\"_blank\">", url))...)
+		ret_bytes = append(ret_bytes, url...)
+		ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("</a>"))...)
+		last_indx = loc[i][1]
+	}
+	ret_bytes = append(ret_bytes, line_bytes[last_indx:]...)
 	return ret_bytes
 }
 
 var url_regex *regexp.Regexp
-func find_url_in_string(l []byte) []int{
+func find_url_in_string(l []byte) [][]int{
 	if url_regex == nil {
 		url_regex, _ = regexp.Compile(`\b((https?:\/\/)?((localhost|(\d{1,3}\.){3}\d{1,3}|([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}))(:\d{2,5})?(\/[^\s]*)?)\b`)
 	}
-	return url_regex.FindIndex(l)
+	// return url_regex.FindIndex(l)
+	return url_regex.FindAllIndex(l, -1)
 }
 
 
@@ -374,7 +381,6 @@ func add_formatting_tags_to_string(s string) string{
 	return return_string.String()
 }
 
-
 type docentry_file struct {
 	Url string			`json:"url"`
 	Name string         `json:"name"`
@@ -407,7 +413,8 @@ type test_data struct {
 	Type string         `json:"type"`
 	Date string         `json:"date"`
 	Starred bool        `json:"starred"`
-	Files []docentry_file        `json:"files"`
+	Files []docentry_file				`json:"files"`
+	Webpreview []previewbuilder.URLPreview	`json:"webpreview"`
 }
 func (t test_data) String() string {
 	b,err := json.Marshal(t)
@@ -647,17 +654,32 @@ func main() {
 				}
 				fmt.Println("title Value: ", titles)
 
+				//webpreviews
+				preview_url_idxs := find_url_in_string([]byte(title))
+				preview_urls := make([]string, len(preview_url_idxs))
+				for i,idx_pair := range preview_url_idxs {
+					preview_urls[i] = string([]byte(title)[idx_pair[0]:idx_pair[1]])
+				}
+				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
+				for _,url_for_preview := range preview_urls {
+					preview_build, err := previewbuilder.URLPreview{}.New(url_for_preview)
+					if err == nil {
+						docentry_new_webpreviews = append(docentry_new_webpreviews, preview_build)
+					}
+				}
+
+
 				date := time.Now().UTC().Format(http.TimeFormat)
 				if len(files) == 0 {
 					data := get_data(sub)
-					data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date})
+					data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date, Webpreview: docentry_new_webpreviews})
 					set_data(data, sub)
 				} else {
 					data := get_data(sub)
 					doc_id := get_data_new_id(&data)
 					defer func() {set_data(data, sub)} ()
 					docentry_new_files := make([]docentry_file, 0)
-					new_data := test_data{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date, Files: docentry_new_files}
+					new_data := test_data{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
 					for _, file := range files {
 						basename := fmt.Sprintf("%d__%s", time.Now().UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
 						filename := "uploads/"+ sub +"/" + basename

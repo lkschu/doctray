@@ -7,7 +7,11 @@
                 <div class="doc-entry-content debug">
                     <div class="doc-entry-tagview debug">
                         {{ range $tagenabled := .Tags_enabled }}
-                            {{ template "base/post-tag.tmpl" $tagenabled }}
+                            <div class="doc-entry-tagview-segment tooltip"
+                            hx-post="/tray/post-tag" hx-vals='{"id":{{$.DocID}}, "tag":"{{$tagenabled.Tag.ID}}"}' hx-target="#doc-entry-container-{{$.DocID}}" hx-swap="outerHTML"
+                            style="background-color:{{ if $tagenabled.Enabled }}{{ $tagenabled.Tag.Color }}{{ else }}_{{ end }}">
+                            {{ if $tagenabled.Enabled }}{{ $tagenabled.Tag.Sym }}{{ else }}_{{ end }}
+                            <div class="tooltiptext">{{ $tagenabled.Tag.Name }}</div></div>
                         {{ end }}
                     </div>
 
@@ -31,21 +35,13 @@
                         <button hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
                     </div>
                     <div class="doc-entry-button-fav {{ if .Starred }}starred{{end}}">
-                        <button hx-post="/tray/doc-star" hx-vals='{"id":{{.DocID}}}'hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
+                        <button hx-post="/tray/doc-star" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
                     </div>
                 </div>
 
             </div>
         </li>
 
-    <div>
-{{ end }}
-
-{{ define "base/post-taglist.tmpl" }}
-    <div class="doc-entry-tagview debug">
-        {{ range $tagenabled := .Tags_enabled }}
-            {{ template "base/post-tag.tmpl" $tagenabled }}
-        {{ end }}
     </div>
 {{ end }}
 

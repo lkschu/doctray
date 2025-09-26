@@ -455,13 +455,31 @@ func (t tag) StringShort() string {
 type profile_data struct {
 	Posts []post	`json:"posts"`
 	Tags []tag			`json:"tags"`
-	Tag_map map[string]*tag	`json:"-"`
+	Tag_map map[string]*tag	`json:"-"` // id -> tag mapping
 	Tag_edit bool		`json:"tag_edit"`
 }
 func (p *profile_data) normalize_tag_nrs() {
 	for i,_ := range p.Tags {
 		p.Tags[i].Nr = fmt.Sprint(i)
 	}
+}
+func (p *profile_data) find_post_by_id(id int) *post {
+	idx := p.find_post_idx_by_id(id)
+	if idx == -1 {
+		return nil
+	}
+	return &p.Posts[idx]
+}
+func (p *profile_data) find_post_idx_by_id(id int) int {
+	ret := -1
+
+	for i, e := range p.Posts {
+		if e.DocID == id {
+			ret = i
+			break
+		}
+	}
+	return ret
 }
 
 type tag_enabled struct {
@@ -489,6 +507,34 @@ func (t post) String() string {
 		panic(err)
 	}
 	return string(b)
+}
+// Toggles the tag (by string id) for the post
+func (p *post) toggle_tag_by_id(tag_id string) (error) {
+	disabled := false
+	unknown_tag := true
+	for i,t := range p.Tags {
+		if t == tag_id {
+			p.Tags = append(p.Tags[:i],p.Tags[i+1:]...)
+			disabled = true
+			unknown_tag = false
+			break
+		}
+	}
+	for i,t := range p.Tags_enabled {
+		if t.Tag.ID == tag_id {
+			unknown_tag = false
+			p.Tags_enabled[i].Enabled = !p.Tags_enabled[i].Enabled
+			break
+		}
+	}
+	if unknown_tag {
+		return errors.New("Unknown tag id")
+	}
+
+	if !disabled {
+		p.Tags = append(p.Tags, tag_id)
+	}
+	return nil
 }
 
 type meta_info struct {
@@ -540,14 +586,18 @@ func get_data_new_id(data *[]post) int {
 }
 
 
-func render_data(profile profile_data) profile_data {
-	data:=profile.Posts
-	rendered_posts := make([]post, len(data))
-	for i,r := range data {
-		// fmt.Println(data[i].String())
-		data[i].Title = template.HTML(add_formatting_tags_to_string(string(r.Title)))
-		rendered_posts[i] = data[i]
-		// fmt.Println(data[i].String())
+func render_post(p post) post {
+	// fmt.Println(data[i].String())
+	p.Title = template.HTML(add_formatting_tags_to_string(string(p.Title)))
+	// rendered_posts[i] = data[i]
+	// fmt.Println(data[i].String())
+	return p
+}
+func render_all(profile profile_data) profile_data {
+	posts:=profile.Posts
+	rendered_posts := make([]post, len(posts))
+	for i,p := range posts {
+		rendered_posts[i] = render_post(p)
 	}
 	profile.Posts = rendered_posts
 	return profile
@@ -592,11 +642,10 @@ func get_data(sub string) profile_data {
 
 	if x:= len(drop_tags_by_idx); x > 0 {
 		fmt.Printf("Dropping <%d> tags!\n", x)
-		for i:= len(drop_tags_by_idx)-1; i >= 0; i-- {
+		for i:= len(drop_tags_by_idx)-1; i > 0; i-- {
 			profile_data.Tags = append(profile_data.Tags[:i], profile_data.Tags[i+1:]...)
 		}
 	}
-
 
 
 	// Validate posts, set defaults
@@ -623,6 +672,15 @@ func get_data(sub string) profile_data {
 
 	for i,p := range posts {
 		active_tags := make(map[string]bool)
+		new_tags := make([]string, 0)
+		// drop duplicate and old tags
+		for _,t := range p.Tags {
+			if _,ok := profile_data.Tag_map[t]; ok && t != "" {
+				new_tags = append(new_tags, t)
+			}
+		}
+		posts[i].Tags = new_tags
+
 		for _,t := range p.Tags {
 			active_tags[t] = true
 		}
@@ -635,8 +693,6 @@ func get_data(sub string) profile_data {
 	}
 	profile_data.Posts = posts
 
-
-	// fmt.Println(data[len(data)-1].String())
 	return profile_data
 }
 func set_data(profile profile_data, sub string) {
@@ -737,7 +793,7 @@ func main() {
 			sub := get_uuid(c)
 			profile_data := get_data(sub)
 			set_data(profile_data, sub)
-			c.HTML(http.StatusOK, "posts/tray.tmpl", render_data(profile_data))
+			c.HTML(http.StatusOK, "posts/tray.tmpl", render_all(profile_data))
 		})
 
 		router_tray.POST("/ping", func(ctx *gin.Context) {ctx.String(http.StatusOK, "All fine")})
@@ -772,12 +828,37 @@ func main() {
 			return ret_tags
 		}
 
+		router_tray.POST("/post-tag", func(c *gin.Context) {
+			id_str := c.PostForm("id")
+			if id_str == "" {
+				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
+			}
+			fmt.Printf("Got ID: %s\n", id_str)
+			id, err := strconv.Atoi(id_str)
+			if err != nil {
+				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
+			}
+			tag_uid := c.PostForm("tag")
+			if tag_uid == "" {
+				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing tag!"))
+			}
+
+			sub := get_uuid(c)
+			profile := get_data(sub)
+			p_idx := profile.find_post_idx_by_id(id)
+			err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
+			if err != nil {
+				c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
+			}
+			set_data(profile, sub)
+			c.HTML(http.StatusOK, "base/doc.tmpl", render_post(profile.Posts[p_idx]))
+		})
 		router_tray.POST("/tag-edit", func(c *gin.Context){
 			sub := get_uuid(c)
 			profile_data := get_data(sub)
 			profile_data.Tag_edit = true
 			set_data(profile_data, sub)
-			c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
+			c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 		})
 		router_tray.POST("/tag-apply", func(c *gin.Context){
 			sub := get_uuid(c)
@@ -810,7 +891,7 @@ func main() {
 			}
 			fmt.Println("")
 			if len(profile_data.Tags) >= 32 {
-				c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
+				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 				return
 			}
 			new_tag := tag{}.New()
@@ -822,7 +903,7 @@ func main() {
 				fmt.Println(t.StringShort())
 			}
 			fmt.Println("")
-			c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
+			c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 		})
 
 		router_tray.POST("/doc-create", func(c *gin.Context){
@@ -894,7 +975,7 @@ func main() {
 			if ret {
 				sub := get_uuid(c)
 				// c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-				c.HTML(http.StatusOK, "base/doc-list.tmpl", render_data(get_data(sub)))
+				c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
 			}
 		})
 
@@ -949,13 +1030,7 @@ func main() {
 
 			sub := get_uuid(c)
 			profile := get_data(sub)
-			toggle_star := -1
-			for i, e := range profile.Posts {
-				if e.DocID == id {
-					toggle_star = i
-					break
-				}
-			}
+			toggle_star := profile.find_post_idx_by_id(id)
 			if toggle_star == -1 {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
 			} else {

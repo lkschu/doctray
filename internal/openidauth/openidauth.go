@@ -156,6 +156,7 @@ func (handler *AuthHandler) Logout() gin.HandlerFunc{
 		s.Options(sessions.Options{MaxAge: -1, Path: "/"}) // this sets the cookie as expired
 		err := s.Save()
 		if err != nil {
+			log.Fatal("Can't save(remove) cookie!")
 			http.Error(ctx.Writer, "Internal error", http.StatusInternalServerError)
 		}
 	}

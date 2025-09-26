@@ -138,32 +138,6 @@ body {
     line-height: 1.5em;
 }
 
-#tag-container {
-    /* display: block; */
-    margin: 0.5rem auto 0.5rem auto;
-    /* float: left; */
-    /* max-width: 10em; */
-    border-radius: 1em;
-    background-color: #99f;
-    padding: 1em;
-}
-
-#tag-container ul {
-    line-height: 2.5rem;
-    width: 70%;
-    margin: auto;
-    overflow: hidden;
-    list-style-type: none;
-}
-#tag-container ul li {
-
-    float: left;
-    display: block;
-    background-color: #522;
-    color: #fff;
-    margin: 2px;
-    padding: 0 8px;
-}
 
 #doc-container {
     /* position: absolute; */
@@ -275,6 +249,61 @@ input[type="file"] {
 	width: 100%;
 	box-sizing: border-box;
 }
+
+.tooltip {
+  /* position: relative; */
+  /* display: inline-block; */
+  /* border-bottom: 1px dotted black; */
+  /* cursor: pointer; */
+}
+.tooltiptext {
+  visibility: hidden;
+  /* width: 130px; */
+  background-color: var(--gray-06);
+  color: #fff;
+  text-align: center;
+  font-size: 14px;
+  border-radius: 6px;
+  padding: 5px 3px;
+  position: absolute;
+  z-index: 1;
+  top: -25px;
+  white-space: nowrap;
+  overflow: visible;
+  /* left: 105%; */
+}
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
+
+.doc-entry-tagview {
+	width: 100%;
+	box-sizing: border-box;
+	/* flex: 1; */
+	/* background-color: white; */
+	display: flex;
+	border-radius: 0.65rem;
+	border-color: var(--gray-02);
+	border-style: solid;
+	border-width: 1px;
+	height: 30px;
+
+	overflow: hidden; /* rounded corners clips children */
+}
+.doc-entry-tagview-segment {
+	border-radius: 0.65rem;
+	border-color: var(--gray-02);
+	border-style: solid;
+	border-width: 2px;
+    flex: 1;
+    font-size: 20px;
+
+    /* center content */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
 .doc-entry-web-preview {
 	width: 100%;
 	box-sizing: border-box;

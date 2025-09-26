@@ -403,6 +403,21 @@ const (
 	doctype_image string = "image"
 )
 
+type tag struct {
+	ID string
+	Sym string
+	Name string
+	Color string
+	Enabled bool
+}
+func (t tag) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Symbol: %s\n", t.Sym))
+	sb.WriteString(fmt.Sprintf("Name: %s\n", t.Name))
+	sb.WriteString(fmt.Sprintf("Color: %s\n", t.Color))
+	return sb.String()
+}
+
 type test_data_rendered test_data
 
 type test_data struct {
@@ -631,6 +646,35 @@ func main() {
 		})
 
 		router_tray.POST("/ping", func(ctx *gin.Context) {ctx.String(http.StatusOK, "All fine")})
+
+		router_tray.POST("/tag-create", func(c *gin.Context){
+				form, err := c.MultipartForm()
+				if err != nil {
+					c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+					return
+				}
+				merge_form := func (string_slice []string) (string) {
+					var ret string
+					if len(string_slice) > 0 {
+						ret = string_slice[0]
+						ret = strings.TrimSpace(ret)
+						ret = strings.ReplaceAll(ret,"\r","")
+						ret = html.EscapeString(ret)
+					} else {
+						ret = "_"
+					}
+					return ret
+				}
+				fmt.Println("tag", form.Value["tag"])
+				fmt.Println("tag[1]", form.Value["tag[1]"])
+
+				tagid := merge_form(form.Value["tag_id"])
+				tagname := merge_form(form.Value["name"])
+				tagsymbol := merge_form(form.Value["symbol"])
+				tagcolors := merge_form(form.Value["picked_color"])
+				tag := tag{Sym: tagsymbol, Name: tagname, Color: tagcolors, ID: tagid}
+				fmt.Println(tag)
+		})
 
 		router_tray.POST("/doc-create", func(c *gin.Context){
 			ret := func (c*gin.Context) bool { // Ugly hack to let the defer update the data before we use it in the tmpl

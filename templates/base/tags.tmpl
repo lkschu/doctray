@@ -1,0 +1,59 @@
+{{ define "base/tags.tmpl" }}
+<div id="tag-container">
+    <link href='/resources/css/tags.css' rel='stylesheet' type='text/css' />
+
+    <form>
+        <div id="tag-container-tag-list">
+            <ul>
+                <li id="tag-li-1">
+                    <div class="tag-container-tag">
+                        <div class="hidden"> <input type="text"  value="1"     name="tag[1]tag_id" class="input-hidden" disabled></div>
+
+                        <div class="tag-name-wrapper"> <input type="text"  value="name"  name="tag[1]name"></div>
+                        <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[1]picked_color" value="#ff0000"></div>
+                        <div class="tag-symbol-color-container">
+                            <div class="tag-symbol-wrapper"> <input type="text"  value="⁉️"     name="tag[1]symbol" maxlength="2" class="tag-symbol"></div>
+                            <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-1">🗑️</button></div>
+                        </div>
+                    <div>
+                </li>
+                <!-- {{ if .Tags }}{{ template "base/tag.tmpl" .Tags }}{{ end }} -->
+                {{ range $tag := . }}
+                    {{ template "base/tag.tmpl" $tag }}
+                {{ end }}
+            </ul>
+
+            <div id="tag-container-buttons">
+                <button
+                    id="upload-button"
+                    hx-encoding="multipart/form-data"
+                    hx-post="/tray/tag-create"
+                    type="submit" class="btn btn-primary">New Tag</button>
+                <button
+                    id="upload-button"
+                    hx-encoding="multipart/form-data"
+                    hx-post="/tray/tag-save"
+                    type="submit" class="btn btn-primary">Apply</button>
+            </div>
+
+        </div>
+    </form>
+</div>
+<div id="tag-container">
+</div>
+{{ end }}
+
+{{ define "base/tag.tmpl" }}
+    <li id="tag-li-{{ .ID }}">
+        <div class="tag-container-tag">
+            <div class="hidden"> <input type="text"  value="2"     name="tag[{{ .ID }}]tag_id" class="input-hidden" disabled></div>
+
+            <div class="tag-name-wrapper"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .ID }}]name"></div>
+            <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[{{ .ID }}]picked_color" value="{{ .Color }}"></div>
+            <div class="tag-symbol-color-container">
+                <div class="tag-symbol-wrapper"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .ID }}]symbol" maxlength="2" class="tag-symbol"></div>
+                <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .ID }}">🗑️</button></div>
+            </div>
+        <div>
+    </li>
+{{ end }}

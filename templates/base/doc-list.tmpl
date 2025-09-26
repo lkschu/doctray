@@ -11,7 +11,7 @@
 
                         <div class="doc-entry-content debug">
 
-							<div class="doc-entry-tagview debug">
+                            <div class="doc-entry-tagview debug">
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:red">🤗<div class="tooltiptext">Some tooltip text</div></div>
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:green">😶‍🌫️<div class="tooltiptext">Some other text</div></div>
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:blue">🤢<div class="tooltiptext">Some text</div></div>
@@ -20,7 +20,7 @@
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:white">I<div class="tooltiptext">Sample text</div></div>
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:white">😱<div class="tooltiptext">Some other text</div></div>
                                 <div class="doc-entry-tagview-segment tooltip" style="background-color:white">I<div class="tooltiptext">Sample text</div></div>
-							</div>
+                            </div>
 							<div class="doc-entry-web-preview debug">
 								<div class="doc-entry-web-preview-image">
 									<img src="https://www.homesicktexan.com/wp-content/uploads/2017/02/Coca-Cola-braised-carnitas-DSC4126-1-1536x1020.jpg.webp" width="100" height="100">
@@ -105,7 +105,7 @@
             </div>
 
             <ul class="main-list">
-            {{ range $doc := . }}
+            {{ range $doc := .Posts }}
                 {{ template "base/doc.tmpl" $doc }}
             {{ end }}
             </ul>
@@ -185,3 +185,4 @@
      </script>
     </div>
 {{ end }}
+

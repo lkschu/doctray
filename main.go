@@ -8,15 +8,16 @@ import (
 	"io"
 	"io/fs"
 	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
-	"sort"
 	"time"
-	"regexp"
 
 	"path"
 	// "path/filepath"
@@ -27,6 +28,7 @@ import (
 
 	"main/internal/openidauth"
 	"main/internal/previewbuilder"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -117,6 +119,24 @@ const (
 type token_position struct {
 	token string
 	position int
+}
+
+func RandomColor() string {
+	r := rand.Intn(256)
+	g := rand.Intn(256)
+	b := rand.Intn(256)
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+}
+func RandomString() string {
+	b1 := rand.Intn(256)
+	b2 := rand.Intn(256)
+	b3 := rand.Intn(256)
+	b4 := rand.Intn(256)
+	b5 := rand.Intn(256)
+	b6 := rand.Intn(256)
+	b7 := rand.Intn(256)
+	b8 := rand.Intn(256)
+	return fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x", b1, b2, b3, b4, b5, b6, b7, b8)
 }
 
 
@@ -335,7 +355,7 @@ func add_formatting_tags_to_string(s string) string{
 
 
 		line_bytes := []byte(line)
-		fmt.Println(string(line_bytes))
+		// fmt.Println(string(line_bytes))
 		line_bytes = add_formatting_tags__add_text_decoration(line_bytes)
 		line_bytes = add_formatting_tags__add_url(line_bytes)
 
@@ -357,7 +377,7 @@ func add_formatting_tags_to_string(s string) string{
 			return ret
 		}
 
-		fmt.Println(string(line_bytes))
+		// fmt.Println(string(line_bytes))
 		list_added := false
 		if strings.HasPrefix(new_line, "- ") || strings.HasPrefix(new_line, " - ") {
 			list_added = true
@@ -372,7 +392,7 @@ func add_formatting_tags_to_string(s string) string{
 			line_bytes = append([]byte("<ul><div class=\"markdown-list-inner\"><li>"), line_bytes...)
 			line_bytes = append(line_bytes,[]byte("</li></div></ul>")...)
 		}
-		fmt.Println("Wrapped:{" + string(line_bytes) + "}\n\n")
+		// fmt.Println("Wrapped:{" + string(line_bytes) + "}\n\n")
 		return_string.WriteString(string(line_bytes))
 		if !list_added {
 			return_string.WriteString("<br>")
@@ -404,11 +424,15 @@ const (
 )
 
 type tag struct {
-	ID string
-	Sym string
-	Name string
-	Color string
-	Enabled bool
+	Nr string			`json:"-"`
+	ID string			`json:"id"`
+	Sym string			`json:"symbol"`
+	Name string			`json:"name"`
+	Color string		`json:"color"`
+	Enabled bool		`json:"enabled"`
+}
+func (tag) New() tag {
+	return tag{Nr: "0", ID: RandomString(), Sym: "?", Name: "tag name", Color: RandomColor()}
 }
 func (t tag) String() string {
 	var sb strings.Builder
@@ -417,21 +441,48 @@ func (t tag) String() string {
 	sb.WriteString(fmt.Sprintf("Color: %s\n", t.Color))
 	return sb.String()
 }
-
-type test_data_rendered test_data
-
-type test_data struct {
-	DocID int           `json:"id"`
-	Title template.HTML `json:"title"`
-	Desc string         `json:"desc"`
-	UrlLL string          `json:"url"`
-	Type string         `json:"type"`
-	Date string         `json:"date"`
-	Starred bool        `json:"starred"`
-	Files []docentry_file				`json:"files"`
-	Webpreview []previewbuilder.URLPreview	`json:"webpreview"`
+func (t tag) StringShort() string {
+	b,err := json.Marshal(t)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	return string(b)
 }
-func (t test_data) String() string {
+
+
+// Saves all data
+type profile_data struct {
+	Posts []post	`json:"posts"`
+	Tags []tag			`json:"tags"`
+	Tag_map map[string]*tag	`json:"-"`
+	Tag_edit bool		`json:"tag_edit"`
+}
+func (p *profile_data) normalize_tag_nrs() {
+	for i,_ := range p.Tags {
+		p.Tags[i].Nr = fmt.Sprint(i)
+	}
+}
+
+type tag_enabled struct {
+	Tag *tag
+	Enabled bool
+}
+
+type post struct {
+	DocID int				`json:"id"`
+	Title template.HTML		`json:"title"`
+	Desc string				`json:"desc"`
+	UrlLL string			`json:"url"`
+	Type string				`json:"type"`
+	Date string				`json:"date"`
+	Starred bool			`json:"starred"`
+	Files []docentry_file	`json:"files"`
+	Webpreview []previewbuilder.URLPreview	`json:"webpreview"`
+	Tags []string			`json:"tags"`
+	Tags_enabled []tag_enabled	`json:"-"`
+}
+func (t post) String() string {
 	b,err := json.Marshal(t)
 	if err != nil {
 		fmt.Println(err)
@@ -478,7 +529,7 @@ func (doc) init_data() []doc {
 }
 
 
-func get_data_new_id(data *[]test_data) int {
+func get_data_new_id(data *[]post) int {
 	new_id := -1
 	for _,f := range *data {
 		if f.DocID > new_id {
@@ -489,27 +540,29 @@ func get_data_new_id(data *[]test_data) int {
 }
 
 
-func render_data(data []test_data) []test_data {
-	ret := make([]test_data, len(data))
+func render_data(profile profile_data) profile_data {
+	data:=profile.Posts
+	rendered_posts := make([]post, len(data))
 	for i,r := range data {
-		fmt.Println(data[i].String())
+		// fmt.Println(data[i].String())
 		data[i].Title = template.HTML(add_formatting_tags_to_string(string(r.Title)))
-		ret[i] = data[i]
-		fmt.Println(data[i].String())
+		rendered_posts[i] = data[i]
+		// fmt.Println(data[i].String())
 	}
-	return ret
+	profile.Posts = rendered_posts
+	return profile
 }
 
 
-func get_data(sub string) []test_data {
+func get_data(sub string) profile_data {
 	file, err := os.Open(fmt.Sprintf("./data/%s.json", sub))
-	defer file.Close()
 	if errors.Is(err, fs.ErrNotExist) {
-		return make([]test_data, 0)
+		return profile_data{}
 	}
 	if err != nil {
 		panic(err)
 	}
+	defer file.Close()
 
 	bytes_read := make([]byte, 1024*1024*1) // Up to 1MB of data
 	n, err := file.Read(bytes_read)
@@ -519,34 +572,76 @@ func get_data(sub string) []test_data {
 	if n == 0 {
 		panic("fail")
 	}
-	data := make([]test_data, 1)
-	json.Unmarshal(bytes_read[0:n], &data)
+	// data := make([]test_data, 1)
+	profile_data := profile_data{}
+	profile_data.Tag_map = make(map[string]*tag)
+	json.Unmarshal(bytes_read[0:n], &profile_data)
 
-	// Validate data, set defaults
+	// Validate Tags
+	profile_data.normalize_tag_nrs()
+	drop_tags_by_idx := make([]int, 0)
+	for i,t := range profile_data.Tags {
+		if _, ok := profile_data.Tag_map[t.ID]; ok {
+			// key is known, duplicate!
+			drop_tags_by_idx = append(drop_tags_by_idx, i)
+			fmt.Printf("Duplicate for UUID: '%s'; dropping!\n", t.ID)
+		} else {
+			profile_data.Tag_map[t.ID] = &t
+		}
+	}
+
+	if x:= len(drop_tags_by_idx); x > 0 {
+		fmt.Printf("Dropping <%d> tags!\n", x)
+		for i:= len(drop_tags_by_idx)-1; i >= 0; i-- {
+			profile_data.Tags = append(profile_data.Tags[:i], profile_data.Tags[i+1:]...)
+		}
+	}
+
+
+
+	// Validate posts, set defaults
 	// TODO: remove duplicate ids
-	for i,d := range data {
+	posts := profile_data.Posts
+	for i,d := range posts {
 		if d.Type != doctype_file && d.Type != doctype_mesage && d.Type != doctype_image {
-			data[i].Type = doctype_mesage
+			posts[i].Type = doctype_mesage
 		}
 		if len(d.Files) > 0 {
 			for j,f := range d.Files {
 				if f.Icon == "" {
 					icon, success := known_file_suffixes[filepath.Ext(f.OrgName)]
 					if success {
-						data[i].Files[j].Icon = icon
+						posts[i].Files[j].Icon = icon
 					} else {
-						data[i].Files[j].Icon = known_file_suffixes[".default"]
+						posts[i].Files[j].Icon = known_file_suffixes[".default"]
 					}
-					fmt.Println(f.String())
+					// fmt.Println(f.String())
 				}
 			}
 		}
 	}
+
+	for i,p := range posts {
+		active_tags := make(map[string]bool)
+		for _,t := range p.Tags {
+			active_tags[t] = true
+		}
+		posts[i].Tags_enabled = make([]tag_enabled, 0)
+		for _,t := range profile_data.Tags {
+			tag_enabled := tag_enabled{Enabled: active_tags[t.ID], Tag: &t}
+			posts[i].Tags_enabled = append(posts[i].Tags_enabled, tag_enabled)
+		}
+
+	}
+	profile_data.Posts = posts
+
+
 	// fmt.Println(data[len(data)-1].String())
-	return data
+	return profile_data
 }
-func set_data(d []test_data, sub string) {
-	b,err := json.Marshal(d)
+func set_data(profile profile_data, sub string) {
+	profile.normalize_tag_nrs()
+	b,err := json.Marshal(profile)
 	// fmt.Println(string(b))
 	if err != nil {
 		panic(err)
@@ -640,40 +735,94 @@ func main() {
 	{
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
-			test_data_array := get_data(sub)
-			set_data(test_data_array, sub)
-			c.HTML(http.StatusOK, "posts/tray.tmpl", render_data(test_data_array))
+			profile_data := get_data(sub)
+			set_data(profile_data, sub)
+			c.HTML(http.StatusOK, "posts/tray.tmpl", render_data(profile_data))
 		})
 
 		router_tray.POST("/ping", func(ctx *gin.Context) {ctx.String(http.StatusOK, "All fine")})
 
-		router_tray.POST("/tag-create", func(c *gin.Context){
-				form, err := c.MultipartForm()
-				if err != nil {
-					c.String(http.StatusBadRequest, "get form err: %s", err.Error())
-					return
-				}
-				merge_form := func (string_slice []string) (string) {
-					var ret string
-					if len(string_slice) > 0 {
-						ret = string_slice[0]
-						ret = strings.TrimSpace(ret)
-						ret = strings.ReplaceAll(ret,"\r","")
-						ret = html.EscapeString(ret)
-					} else {
-						ret = "_"
-					}
-					return ret
-				}
-				fmt.Println("tag", form.Value["tag"])
-				fmt.Println("tag[1]", form.Value["tag[1]"])
 
-				tagid := merge_form(form.Value["tag_id"])
-				tagname := merge_form(form.Value["name"])
-				tagsymbol := merge_form(form.Value["symbol"])
-				tagcolors := merge_form(form.Value["picked_color"])
-				tag := tag{Sym: tagsymbol, Name: tagname, Color: tagcolors, ID: tagid}
-				fmt.Println(tag)
+		merge_form := func (string_slice []string) (string) {
+			var ret string
+			if len(string_slice) > 0 {
+				ret = string_slice[0]
+				ret = strings.TrimSpace(ret)
+				ret = strings.ReplaceAll(ret,"\r","")
+				ret = html.EscapeString(ret)
+			} else {
+				ret = "_"
+			}
+			return ret
+		}
+		extract_tags_from_multiform := func(form *multipart.Form) ([]tag) {
+			ret_tags := make([]tag, 0)
+			for i:=0; i<=32; i++ {
+				if len(form.Value[fmt.Sprintf("tag[%d]name", i)]) > 0 {
+					tagnr := fmt.Sprint(i)
+					tagid := merge_form(form.Value[fmt.Sprintf("tag[%d]tag_id", i)])
+					tagname := merge_form(form.Value[fmt.Sprintf("tag[%d]name", i)])
+					tagsymbol := merge_form(form.Value[fmt.Sprintf("tag[%d]symbol", i)])
+					tagcolor := merge_form(form.Value[fmt.Sprintf("tag[%d]color", i)])
+					new_tag := tag{Nr: tagnr, ID: tagid, Name: tagname, Sym: tagsymbol, Color: tagcolor}
+					ret_tags = append(ret_tags, new_tag)
+				}
+			}
+			fmt.Printf("Extracted %d tags from multiform\n", len((ret_tags)))
+			return ret_tags
+		}
+
+		router_tray.POST("/tag-edit", func(c *gin.Context){
+			sub := get_uuid(c)
+			profile_data := get_data(sub)
+			profile_data.Tag_edit = true
+			set_data(profile_data, sub)
+			c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
+		})
+		router_tray.POST("/tag-apply", func(c *gin.Context){
+			sub := get_uuid(c)
+			form, err := c.MultipartForm()
+			if err != nil {
+				c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+				return
+			}
+
+			profile_data := get_data(sub)
+			profile_data.Tags = extract_tags_from_multiform(form)
+			profile_data.Tag_edit = false
+			set_data(profile_data, sub)
+			c.Header("HX-Refresh", "true")
+			c.String(http.StatusOK, "")
+		})
+		router_tray.POST("/tag-create", func(c *gin.Context){
+			sub := get_uuid(c)
+			form, err := c.MultipartForm()
+			if err != nil {
+				c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+				return
+			}
+
+			profile_data := get_data(sub)
+			profile_data.Tags = extract_tags_from_multiform(form)
+			fmt.Println("Tags in memory before addition:")
+			for _,t := range profile_data.Tags {
+				fmt.Println(t.StringShort())
+			}
+			fmt.Println("")
+			if len(profile_data.Tags) >= 32 {
+				c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
+				return
+			}
+			new_tag := tag{}.New()
+			new_tag.Nr = fmt.Sprint(len(profile_data.Tags))
+			profile_data.Tags = append(profile_data.Tags, new_tag)
+			profile_data.normalize_tag_nrs()
+			fmt.Println("Tags in memory:")
+			for _,t := range profile_data.Tags {
+				fmt.Println(t.StringShort())
+			}
+			fmt.Println("")
+			c.HTML(http.StatusOK, "base/tags.tmpl", render_data(profile_data))
 		})
 
 		router_tray.POST("/doc-create", func(c *gin.Context){
@@ -715,15 +864,17 @@ func main() {
 
 				date := time.Now().UTC().Format(http.TimeFormat)
 				if len(files) == 0 {
-					data := get_data(sub)
-					data = append(data, test_data{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date, Webpreview: docentry_new_webpreviews})
-					set_data(data, sub)
+					profile := get_data(sub)
+					data := profile.Posts
+					data = append(data, post{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date, Webpreview: docentry_new_webpreviews})
+					profile.Posts = data
+					set_data(profile, sub)
 				} else {
-					data := get_data(sub)
-					doc_id := get_data_new_id(&data)
-					defer func() {set_data(data, sub)} ()
+					profile := get_data(sub)
+					doc_id := get_data_new_id(&profile.Posts)
+					defer func() {set_data(profile, sub)} ()
 					docentry_new_files := make([]docentry_file, 0)
-					new_data := test_data{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
+					new_data := post{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
 					for _, file := range files {
 						basename := fmt.Sprintf("%d__%s", time.Now().UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
 						filename := "uploads/"+ sub +"/" + basename
@@ -736,7 +887,7 @@ func main() {
 						new_data.Files = docentry_new_files
 					}
 					// fmt.Println(data[len(data)-1].String())
-					data = append(data, new_data)
+					profile.Posts = append(profile.Posts, new_data)
 				}
 				return true
 			} (c)
@@ -759,9 +910,9 @@ func main() {
 			}
 
 			sub := get_uuid(c)
-			test_data_array := get_data(sub)
+			profile := get_data(sub)
 			to_drop := -1
-			for i, e := range test_data_array {
+			for i, e := range profile.Posts {
 				if e.DocID == id {
 					to_drop = i
 					break
@@ -770,16 +921,14 @@ func main() {
 			if to_drop == -1 {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
 			} else {
-				for _,f := range test_data_array[to_drop].Files {
+				for _,f := range profile.Posts[to_drop].Files {
 					if strings.HasPrefix(f.Url, "/media/") {
 						basename := strings.TrimPrefix(f.Url, "/media/")
 						os.Remove("uploads/"+sub+"/"+basename)
 					}
 				}
-				test_data_array = slices.Delete(test_data_array,to_drop,to_drop+1)
-				set_data(test_data_array, sub)
-				// c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-				// c.HTML(http.StatusOK, "base/doc-list.tmpl", test_data_array)
+				profile.Posts = slices.Delete(profile.Posts,to_drop,to_drop+1)
+				set_data(profile, sub)
 
 				c.Header("Content-Type", "text/html")
 				answer := "<li class=\"doc-entry doc-type-removed\"> <i>Removed</i> </li>"
@@ -799,9 +948,9 @@ func main() {
 			}
 
 			sub := get_uuid(c)
-			test_data_array := get_data(sub)
+			profile := get_data(sub)
 			toggle_star := -1
-			for i, e := range test_data_array {
+			for i, e := range profile.Posts {
 				if e.DocID == id {
 					toggle_star = i
 					break
@@ -810,11 +959,11 @@ func main() {
 			if toggle_star == -1 {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
 			} else {
-				test_data_array[toggle_star].Starred = ! test_data_array[toggle_star].Starred
-				set_data(test_data_array, sub)
+				profile.Posts[toggle_star].Starred = ! profile.Posts[toggle_star].Starred
+				set_data(profile, sub)
 				c.Header("Content-Type", "text/html")
 				answer := ""
-				if test_data_array[toggle_star].Starred {
+				if profile.Posts[toggle_star].Starred {
 					answer = "<div class=\"doc-entry-button-fav starred\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
 				} else {
 					answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str +"}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"

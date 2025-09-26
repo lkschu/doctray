@@ -5,6 +5,12 @@
             <div class="doc-entry-inlist debug">
 
                 <div class="doc-entry-content debug">
+                    <div class="doc-entry-tagview debug">
+                        {{ range $tagenabled := .Tags_enabled }}
+                            {{ template "base/post-tag.tmpl" $tagenabled }}
+                        {{ end }}
+                    </div>
+
                     {{ if .Webpreview }}{{ template "base/doc-webpreview.tmpl" .Webpreview }}{{ end }}
 
                     <div class="doc-entry-type-container debug">
@@ -33,6 +39,21 @@
         </li>
 
     <div>
+{{ end }}
+
+{{ define "base/post-taglist.tmpl" }}
+    <div class="doc-entry-tagview debug">
+        {{ range $tagenabled := .Tags_enabled }}
+            {{ template "base/post-tag.tmpl" $tagenabled }}
+        {{ end }}
+    </div>
+{{ end }}
+
+{{ define "base/post-tag.tmpl" }}
+        <div class="doc-entry-tagview-segment tooltip"
+        style="background-color:{{ if .Enabled }}{{ .Tag.Color }}{{ else }}_{{ end }}">
+        {{ if .Enabled }}{{ .Tag.Sym }}{{ else }}_{{ end }}
+        <div class="tooltiptext">{{ .Tag.Name }}</div></div>
 {{ end }}
 
 {{ define "base/doc-webpreview.tmpl" }}

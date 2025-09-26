@@ -2,24 +2,44 @@
 <div id="tag-container">
     <link href='/resources/css/tags.css' rel='stylesheet' type='text/css' />
 
+    {{ if .Tag_edit }}
+        {{ template "base/tags-edit.tmpl" . }}
+    {{ else }}
+        {{ template "base/tags-show.tmpl" . }}
+    {{ end  }}
+</div>
+{{ end }}
+
+{{ define "base/tags-show.tmpl" }}
+        <div id="tag-container-tag-list">
+            <ul>
+                {{ range $tag := .Tags }}
+                    {{ template "base/tagshow.tmpl" $tag }}
+                {{ end }}
+            </ul>
+
+            <button id="tags-edit-button" hx-post="/tray/tag-edit"
+                hx-target="#tag-container"
+                hx-post="/tray/tag-create"
+                hx-swap="outerHTML">Edit</button>
+        </div>
+{{ end }}
+
+{{ define "base/tagshow.tmpl" }}
+    <li id="tag-li-{{ .Nr }}">
+        <div class="tag-container-tag">
+            {{ .Sym }}<b>{{ .Name }}</b>
+            <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}" disabled>
+        </div>
+    </li>
+{{ end }}
+
+{{ define "base/tags-edit.tmpl" }}
     <form>
         <div id="tag-container-tag-list">
             <ul>
-                <li id="tag-li-1">
-                    <div class="tag-container-tag">
-                        <div class="hidden"> <input type="text"  value="1"     name="tag[1]tag_id" class="input-hidden" disabled></div>
-
-                        <div class="tag-name-wrapper"> <input type="text"  value="name"  name="tag[1]name"></div>
-                        <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[1]picked_color" value="#ff0000"></div>
-                        <div class="tag-symbol-color-container">
-                            <div class="tag-symbol-wrapper"> <input type="text"  value="⁉️"     name="tag[1]symbol" maxlength="2" class="tag-symbol"></div>
-                            <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-1">🗑️</button></div>
-                        </div>
-                    <div>
-                </li>
-                <!-- {{ if .Tags }}{{ template "base/tag.tmpl" .Tags }}{{ end }} -->
-                {{ range $tag := . }}
-                    {{ template "base/tag.tmpl" $tag }}
+                {{ range $tag := .Tags }}
+                    {{ template "base/tagedit.tmpl" $tag }}
                 {{ end }}
             </ul>
 
@@ -28,31 +48,30 @@
                     id="upload-button"
                     hx-encoding="multipart/form-data"
                     hx-post="/tray/tag-create"
+                    hx-swap="outerHTML"
+                    hx-target="#tag-container"
                     type="submit" class="btn btn-primary">New Tag</button>
                 <button
                     id="upload-button"
                     hx-encoding="multipart/form-data"
-                    hx-post="/tray/tag-save"
+                    hx-post="/tray/tag-apply"
                     type="submit" class="btn btn-primary">Apply</button>
             </div>
 
         </div>
     </form>
-</div>
-<div id="tag-container">
-</div>
 {{ end }}
 
-{{ define "base/tag.tmpl" }}
-    <li id="tag-li-{{ .ID }}">
+{{ define "base/tagedit.tmpl" }}
+    <li id="tag-li-{{ .Nr }}">
         <div class="tag-container-tag">
-            <div class="hidden"> <input type="text"  value="2"     name="tag[{{ .ID }}]tag_id" class="input-hidden" disabled></div>
+            <div class="hidden"> <input type="text"  value="{{ .ID }}"     name="tag[{{ .Nr }}]tag_id" class="input-hidden" readonly="readonly"></div>
 
-            <div class="tag-name-wrapper"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .ID }}]name"></div>
-            <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[{{ .ID }}]picked_color" value="{{ .Color }}"></div>
+            <div class="tag-name-wrapper"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .Nr }}]name"></div>
+            <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}"></div>
             <div class="tag-symbol-color-container">
-                <div class="tag-symbol-wrapper"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .ID }}]symbol" maxlength="2" class="tag-symbol"></div>
-                <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .ID }}">🗑️</button></div>
+                <div class="tag-symbol-wrapper"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .Nr }}]symbol" maxlength="2" class="tag-symbol"></div>
+                <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .Nr }}">🗑️</button></div>
             </div>
         <div>
     </li>

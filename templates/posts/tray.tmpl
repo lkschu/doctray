@@ -14,7 +14,7 @@
 <div id="page-container">
     {{ template "base/header.tmpl" }}
     <div id="workspace-container">
-    {{ template "base/tags.tmpl" }}
+    {{ template "base/tags.tmpl" . }}
 	<script>
 	setInterval(() => {
         htmx.ajax('POST', '/tray/ping', {values: {title:"ping sent"}, swap:'none'})

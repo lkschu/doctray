@@ -264,7 +264,8 @@ input[type="file"] {
   text-align: center;
   font-size: 12px;
   border-radius: 6px;
-  padding: 0px 5px;
+  padding: 7px;
+  line-height: 1em;
   position: absolute;
   z-index: 1;
   top: -25px;

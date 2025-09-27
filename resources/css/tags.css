@@ -1,4 +1,6 @@
-
+:root {
+    --tag-bg: #522;
+}
 #tag-container {
     /* display: block; */
     margin: 0.5rem auto 0.5rem auto;
@@ -10,7 +12,7 @@
 }
 
 #tag-container ul {
-    line-height: 2.5rem;
+    /* line-height: 2.5rem; */
     width: 85%;
     margin: auto;
     overflow-x: auto;
@@ -36,7 +38,7 @@
     flex-direction: column;
     float: left;
     /* display: block; */
-    background-color: #522;
+    background-color: var(--tag-bg);
     color: #fff;
     margin: 4px;
     border-radius: 0.65rem;
@@ -46,6 +48,25 @@
 #tag-container-buttons {
     display: flex;
     flex-direction: column;
+}
+
+.tag-name {
+    /* overflow-x: hide; */
+    overflow: hidden;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tag-name:hover {
+    overflow: visible;
+}
+.tag-name:hover span {
+    position: relative;
+    background-color: var(--tag-bg);
+    box-shadow: 0 0 4px 0 black;
+    border-radius: 4px;
+    padding: 4px;
 }
 
 input[type="color"] {
@@ -83,11 +104,108 @@ input[type="text"]
     box-sizing: border-box;
 }
 
+/**/
+/* Customize the label (the container) */
+.cb-container {
+  display: block;
+  position: relative;
+  padding-left: 35px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-style: italic;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Hide the browser's default checkbox */
+.cb-container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 1.6em;
+    width: 1.6em;
+    background-color: #eee;
+    border-radius: 0.25rem;
+    transform: translateY(-0.15em);
+}
+
+/* On mouse-over, add a grey background color */
+.cb-container:hover input ~ .checkmark {
+  background-color: #ccc;
+}
+
+/* When the checkbox is checked, add a blue background */
+.cb-container input:checked ~ .checkmark {
+  background-color: #0073e6;
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+/* Show the checkmark when checked */
+.cb-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+/* Style the checkmark/indicator */
+.cb-container .checkmark:after {
+  left: 7px;
+  top: 3px;
+  width: 6px;
+  height: 12px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  -webkit-transform: rotate(45deg);
+  -ms-transform: rotate(45deg);
+  transform: rotate(45deg);
+}
+/**/
+
+input[type="checkbox"] {
+    background-color: #ecc593;
+    color: red;
+    border: 0.15em solid black;
+    width: 1.55em;
+    height: 1.55em;
+    transform: translateY(-0.075em);
+}
+input[type="checkbox"]::before {
+  content: "";
+  width: 0.65em;
+  height: 0.65em;
+  transform: scale(0);
+  transition: 120ms transform ease-in-out;
+  box-shadow: inset 1em 1em var(--form-control-color);
+}
+
+input[type="checkbox"]:checked::before {
+  transform: scale(1);
+}
+
 .tag-container-tag {
     font-size: 18px;
-    width: 140px;
-    height: 140px;
-    padding: 4px;
+    width: 80px;
+    height: 110px;
+    padding: 0px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }
 
 .tag-name-wrapper {
@@ -125,6 +243,31 @@ input[type="text"]
     max-width: 100%;
     text-align: center;
 }
+
+.tooltiptext-tagedit {
+  visibility: hidden;
+  /* width: 130px; */
+  background-color: var(--gray-07);
+  color: #fff;
+  text-align: center;
+  font-size: 12px;
+  border-radius: 6px;
+  padding: 7px;
+  line-height: 1em;
+  z-index: 1;
+  position: fixed;
+  /* position: absolute; */
+  /* top: 170px; */
+
+  white-space: nowrap;
+  overflow: visible;
+  /* left: 105%; */
+}
+.tooltip:hover .tooltiptext-tagedit {
+  visibility: visible;
+  transition-delay: 1s;
+}
+
 .tag-button-remove-wrapper {
     width: 36px;
     height: 32px;
@@ -141,4 +284,10 @@ input[type="text"]
     border-style: inset;
     border-width: 2px;
     background-color: lightgray;
+}
+
+.tag-title {
+    margin-top: 6px;
+    display: flex;
+    justify-content: space-between;
 }

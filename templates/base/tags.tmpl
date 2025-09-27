@@ -28,8 +28,17 @@
 {{ define "base/tagshow.tmpl" }}
     <li id="tag-li-{{ .Nr }}">
         <div class="tag-container-tag">
-            {{ .Sym }}<b>{{ .Name }}</b>
+            <div class="tag-title">
+                <div class="tag-name"><span>{{ .Name }}</span></div>
+                {{ .Sym }}
+            </div>
             <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}" disabled>
+            <label class="cb-container">Show
+              <input type="checkbox" id="select-tag-{{.Nr}}"   name="tag[{{ .Nr }}]select" value="{{ .Enabled }}"
+                hx-trigger="change"
+                >
+              <span class="checkmark"></span>
+            </label>
         </div>
     </li>
 {{ end }}
@@ -67,11 +76,19 @@
         <div class="tag-container-tag">
             <div class="hidden"> <input type="text"  value="{{ .ID }}"     name="tag[{{ .Nr }}]tag_id" class="input-hidden" readonly="readonly"></div>
 
-            <div class="tag-name-wrapper"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .Nr }}]name"></div>
-            <div class="tag-color-wrapper"> <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}"></div>
+            <div class="tag-name-wrapper tooltip"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .Nr }}]name">
+                    <div class="tooltiptext-tagedit">tag name</div>
+            </div>
+            <div class="tag-color-wrapper tooltip"> <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}">
+                    <div class="tooltiptext-tagedit">tag color</div>
+            </div>
             <div class="tag-symbol-color-container">
-                <div class="tag-symbol-wrapper"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .Nr }}]symbol" maxlength="2" class="tag-symbol"></div>
-                <div class="tag-button-remove-wrapper"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .Nr }}">🗑️</button></div>
+                <div class="tag-symbol-wrapper tooltip"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .Nr }}]symbol" maxlength="2" class="tag-symbol">
+                    <div class="tooltiptext-tagedit">tag symbol</div>
+                </div>
+                <div class="tag-button-remove-wrapper tooltip"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .Nr }}">🗑️</button>
+                    <div class="tooltiptext-tagedit">delete tag</div>
+                </div>
             </div>
         <div>
     </li>

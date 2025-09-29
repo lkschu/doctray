@@ -182,7 +182,12 @@ body {
     padding: 1em;
     min-height: 5em;
 }
-.mb-3{
+.upload-layout-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+.combined-post-inputs {
     background-color: bisque;
     /* width: 100%; */
     /* padding: 2px; */
@@ -216,6 +221,8 @@ input[type="file"] {
     cursor: pointer;
 }
 #docUpload-label {
+    margin-top: 8px;
+    font-size: 14px;
     background-color: #fff;
     border: 1px solid #999;
     border-radius: 6px;
@@ -225,7 +232,7 @@ input[type="file"] {
     width: 100%;
     box-sizing: border-box;
     /* display: inline-block; */
-    padding: 6px 12px;
+    padding: 4px 12px;
     cursor: pointer;
 }
 #upload-button {
@@ -237,6 +244,11 @@ input[type="file"] {
     padding: 6px 12px;
     cursor: pointer;
 }
+
+/* .new-post{ */
+/*     display: flex; */
+/*     flex-direction: row; */
+/* } */
 
 .markzone {
     border-color: black;

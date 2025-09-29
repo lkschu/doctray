@@ -58,6 +58,7 @@
     border-radius: 1em;
     padding: auto;
     margin: auto 12px auto 0;
+    background-color: var(--gray-01);
 }
 
 .colorfill {

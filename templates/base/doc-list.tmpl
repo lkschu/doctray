@@ -100,61 +100,68 @@
         <div id="uploadform">
             <!--<div class="row">
                 <div class="col-md-6 p-5 mt-5">-->
-                    <div id="upload-container">
-                        <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-trigger="none">
-                        <form  class="form" id="form">
-                            <div class="mb-3">
-                                <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" onchange="sub_uploadbutton_change(this)" required>-->
-                                <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" required>-->
-                                <textarea autofocus class="form-control" id="docUpload-text" placeholder="Type something..." name="title" required></textarea>
-                                <div id="docUpload-label" for="docUpload" class="custom-file-upload" onclick="get_file_names()">Select File</div>
-                                <input type="file" class="form-control" id="docUpload" name="files" onchange="sub_uploadbutton_change(this)" multiple required>
-                                <progress id='progress' value='0' max='100'></progress>
-                            </div>
-                            <button
-                                id="upload-button"
-                                hx-encoding="multipart/form-data"
-                                hx-target="#doc-container"
-                                hx-swap="outerHTML scroll:bottom"
-                                hx-post="/tray/doc-create"
-                                type="submit" class="btn btn-primary">Upload</button>
-                        </form>
-                        <script>
-                            // HTMX progress bar for uploads
-                            htmx.on('#form', 'htmx:xhr:progress', function(evt) {
-                              htmx.find('#progress').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
-                            });
+                <form  class="uploadformform" id="form">
+                    <div class="upload-layout-container">
+                        <div id="upload-container">
+                            <div id="drop_zone" ondrop="dropHandler(event)" ondragover="dragOverHandler(event)" ondragleave="dragLeaveHandler(event)" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-trigger="none">
+                                <div class="new-post">
+                                    <div class="combined-post-inputs">
+                                        <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" onchange="sub_uploadbutton_change(this)" required>-->
+                                        <!--<input type="text" class="form-control" id="docUpload-text" placeholder="Title" name="title" required>-->
+                                        <textarea autofocus class="form-control" id="docUpload-text" placeholder="Type something..." name="title" required></textarea>
+                                        <div id="docUpload-label" for="docUpload" class="custom-file-upload" onclick="get_file_names()">Select files to upload</div>
+                                        <input type="file" class="form-control" id="docUpload" name="files" onchange="sub_uploadbutton_change(this)" multiple required>
+                                        <progress id='progress' value='0' max='100'></progress>
+                                    </div>
+                                </div>
+                            <script>
+                                // HTMX progress bar for uploads
+                                htmx.on('#form', 'htmx:xhr:progress', function(evt) {
+                                  htmx.find('#progress').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
+                                });
 
-                            // Only upload files under a certain size (only works with the form, not drag and drop)
-                            var uploadField = document.getElementById("docUpload");
-                            uploadField.addEventListener('change', (event) => {
-                                const target = event.target
-                                if (target.files && target.files.length > 0) {
-                                    var combined_size = 0
-                                    for (var i = 0; i<target.files.length; i++) {
-                                        combined_size = combined_size + target.files[i].size
+                                // Only upload files under a certain size (only works with the form, not drag and drop)
+                                var uploadField = document.getElementById("docUpload");
+                                uploadField.addEventListener('change', (event) => {
+                                    const target = event.target
+                                    if (target.files && target.files.length > 0) {
+                                        var combined_size = 0
+                                        for (var i = 0; i<target.files.length; i++) {
+                                            combined_size = combined_size + target.files[i].size
+                                        }
+                                        if(combined_size > 2097152*5){ // 10MB
+                                           alert("File is too big!");
+                                           target.value = "";
+                                        };
                                     }
-                                    if(combined_size > 2097152*5){ // 10MB
-                                       alert("File is too big!");
-                                       target.value = "";
-                                    };
-                                }
-                            })
+                                })
 
-                            // Enter for submits, shit+enter for new line
-                            document.getElementById("docUpload-text").addEventListener("keypress", e => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                    e.preventDefault();
+                                // Enter for submits, shit+enter for new line
+                                document.getElementById("docUpload-text").addEventListener("keypress", e => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
 
-                                    //e.currentTarget.closest("form").submit();
-                                    var form_data = new FormData(document.getElementById("form"))
-                                    const text_input = document.getElementById('docUpload-text').value;
-                                    htmx.ajax('POST', '/tray/doc-create', {values: {files:form_data.getAll('files'),title:text_input}, source:e.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
-                                }
-                            });
-                        </script>
+                                        //e.currentTarget.closest("form").submit();
+                                        var form_data = new FormData(document.getElementById("form"))
+                                        const text_input = document.getElementById('docUpload-text').value;
+                                        htmx.ajax('POST', '/tray/doc-create', {values: {files:form_data.getAll('files'),title:text_input}, source:e.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
+                                    }
+                                });
+                            </script>
+                            </div>
+                        </div>
+                        <div class="">
+                        <button
+                            id="upload-button"
+                            class="tag-container-buttons"
+                            hx-encoding="multipart/form-data"
+                            hx-target="#doc-container"
+                            hx-swap="outerHTML scroll:bottom"
+                            hx-post="/tray/doc-create"
+                            type="submit" class="btn btn-primary"><span class="material-symbols-outlined">send</span></button>
                         </div>
                     </div>
+                </form>
                 <!--</div>
             </div>-->
         </div>

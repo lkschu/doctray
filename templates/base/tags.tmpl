@@ -34,8 +34,12 @@
             </div>
             <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}" disabled>
             <label class="cb-container">Show
-              <input type="checkbox" id="select-tag-{{.Nr}}"   name="tag[{{ .Nr }}]select" value="{{ .Enabled }}"
+              <input type="checkbox" id="select-tag-{{.Nr}}"   name="tag[{{ .Nr }}]select" value="tag[{{ .Nr }}]select" {{ if .Enabled }}checked{{ end }}
                 hx-trigger="change"
+                hx-post="/tray/tag-toggle-filter"
+                hx-vals='{"id":"{{ .ID }}"}'
+                hx-target="#doc-container"
+                hx-swap="outerHTML scroll:bottom"
                 >
               <span class="checkmark"></span>
             </label>

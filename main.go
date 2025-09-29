@@ -401,6 +401,12 @@ func add_formatting_tags_to_string(s string) string{
 	return return_string.String()
 }
 
+
+func render_posts_to_html(c *gin.Context)  {
+		sub := get_uuid(c)
+		c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
+}
+
 type docentry_file struct {
 	Url string			`json:"url"`
 	Name string         `json:"name"`
@@ -593,11 +599,35 @@ func render_post(p post) post {
 	// fmt.Println(data[i].String())
 	return p
 }
+
 func render_all(profile profile_data) profile_data {
 	posts:=profile.Posts
-	rendered_posts := make([]post, len(posts))
-	for i,p := range posts {
-		rendered_posts[i] = render_post(p)
+	rendered_posts := make([]post, 0)
+	for _,p := range posts {
+
+		// all disabled -> no filtering
+		active_filter := false
+		for _,t := range profile.Tags {
+			if t.Enabled {
+				active_filter = true
+				break
+			}
+		}
+
+		if active_filter {
+			posts_viewable_after_tag_filter := false
+			for _,tag_id := range p.Tags {
+				if tag_pointer,ok := profile.Tag_map[tag_id]; ok && tag_pointer.Enabled {
+					posts_viewable_after_tag_filter = true
+					break
+				}
+			}
+			if !posts_viewable_after_tag_filter {
+				continue
+			}
+		}
+		// rendered_posts[i] = render_post(p)
+		rendered_posts = append(rendered_posts, render_post(p))
 	}
 	profile.Posts = rendered_posts
 	return profile
@@ -636,7 +666,7 @@ func get_data(sub string) profile_data {
 			drop_tags_by_idx = append(drop_tags_by_idx, i)
 			fmt.Printf("Duplicate for UUID: '%s'; dropping!\n", t.ID)
 		} else {
-			profile_data.Tag_map[t.ID] = &t
+			profile_data.Tag_map[t.ID] = &profile_data.Tags[i]
 		}
 	}
 
@@ -853,6 +883,23 @@ func main() {
 			set_data(profile, sub)
 			c.HTML(http.StatusOK, "base/doc.tmpl", render_post(profile.Posts[p_idx]))
 		})
+		router_tray.POST("/tag-toggle-filter", func(c *gin.Context) {
+			sub := get_uuid(c)
+			profile := get_data(sub)
+			id_str := c.PostForm("id")
+			if id_str == "" {
+				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
+			}
+			val,ok := profile.Tag_map[id_str]
+			if !ok {
+				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Unknown ID \"", id_str, "\"!" ))
+			}
+			val.Enabled = !val.Enabled
+			fmt.Printf("Toggled '%s' to %t\n", val.ID, val.Enabled)
+			set_data(profile, sub)
+
+			render_posts_to_html(c)
+		})
 		router_tray.POST("/tag-edit", func(c *gin.Context){
 			sub := get_uuid(c)
 			profile_data := get_data(sub)
@@ -973,9 +1020,7 @@ func main() {
 				return true
 			} (c)
 			if ret {
-				sub := get_uuid(c)
-				// c.Header("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-				c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
+				render_posts_to_html(c)
 			}
 		})
 

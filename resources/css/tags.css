@@ -19,6 +19,7 @@
     border-radius: 0.65rem;
     border-width: 3px;
     border-color: var(--gray-02);
+    padding: 4px;
 
     list-style-type: none;
     display: flex;
@@ -49,6 +50,14 @@
 #tag-container-buttons {
     display: flex;
     flex-direction: column;
+}
+
+#tags-edit-button {
+    height: 48px;
+    width: 48px;
+    border-radius: 1em;
+    padding: auto;
+    margin: auto 12px auto 0;
 }
 
 .tag-name {

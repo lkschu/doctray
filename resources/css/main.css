@@ -181,12 +181,12 @@ input[type="file"] {
     background-color: #fff;
     border: 1px solid #999;
     border-radius: 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-    min-height: 6rem;
-    /* display: inline-block; */
+    /* white-space: nowrap; */
+    /* overflow: hidden; */
+    /* text-overflow: ellipsis; */
+    width: 90%;
+    font-size: 18px;
+    min-height: 4rem;
     padding: 6px 12px;
     cursor: pointer;
 }
@@ -387,7 +387,7 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 	margin: auto;
 }
 .doc-entry-type-container{
-    font-size: 15px;
+    font-size: 16px;
     /* background-color: var(--color-02); */
 	padding: 5px;
     margin-bottom: 0.4rem;
@@ -555,7 +555,7 @@ tt {
     color: var(--tray-entry-fg);
     background-color: var(--tray-entry-bg);
     border-radius: 0.65em;
-    max-width: 70%;
+    max-width: 90%;
     padding: calc(var(--doc-entry-outer-padding) * 2) var(--doc-entry-outer-padding) var(--doc-entry-outer-padding) calc(var(--doc-entry-outer-padding) * 2);
     margin-left: 0.2rem;
     margin-top: 1.2rem;

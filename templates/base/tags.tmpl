@@ -18,10 +18,16 @@
                 {{ end }}
             </ul>
 
-            <button id="tags-edit-button" hx-post="/tray/tag-edit"
+            <button class=tag-container-buttons id="tags-edit-button" hx-post="/tray/tag-edit"
                 hx-target="#tag-container"
-                hx-post="/tray/tag-create"
                 hx-swap="outerHTML">Edit</button>
+            <button class=tag-container-buttons id="star-filter-button" hx-post="/tray/star-filter"
+                hx-target="#doc-container"
+                hx-swap="outerHTML scroll:bottom"
+                >
+                <!--<span class="material-symbols-outlined colortest">star_shine</span>-->
+                <span class="colorfill">⭐</span>
+                </button>
         </div>
 {{ end }}
 
@@ -56,7 +62,7 @@
                 {{ end }}
             </ul>
 
-            <div id="tag-container-buttons">
+            <div id="tag-container-edit-buttons">
                 <button
                     id="upload-button"
                     hx-encoding="multipart/form-data"

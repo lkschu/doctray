@@ -463,6 +463,7 @@ type profile_data struct {
 	Tags []tag			`json:"tags"`
 	Tag_map map[string]*tag	`json:"-"` // id -> tag mapping
 	Tag_edit bool		`json:"tag_edit"`
+	Only_favorites bool	`json:"only_starred"`
 }
 func (p *profile_data) normalize_tag_nrs() {
 	for i,_ := range p.Tags {
@@ -605,17 +606,20 @@ func render_all(profile profile_data) profile_data {
 	posts:=profile.Posts
 	rendered_posts := make([]post, 0)
 	for _,p := range posts {
+		if profile.Only_favorites && !p.Starred {
+			continue
+		}
 
 		// all disabled -> no filtering
-		active_filter := false
+		active_tag_filter := false
 		for _,t := range profile.Tags {
 			if t.Enabled {
-				active_filter = true
+				active_tag_filter = true
 				break
 			}
 		}
 
-		if active_filter {
+		if active_tag_filter {
 			posts_viewable_after_tag_filter := false
 			for _,tag_id := range p.Tags {
 				if tag_pointer,ok := profile.Tag_map[tag_id]; ok && tag_pointer.Enabled {

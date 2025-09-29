@@ -47,17 +47,26 @@
     padding: 0 8px;
 }
 
-#tag-container-buttons {
+#tag-container-edit-buttons {
     display: flex;
     flex-direction: column;
 }
 
-#tags-edit-button {
+.tag-container-buttons {
     height: 48px;
     width: 48px;
     border-radius: 1em;
     padding: auto;
     margin: auto 12px auto 0;
+}
+
+.colorfill {
+  color: transparent;
+  font-size: 20px;
+  text-shadow: 0 0 0 #cc2e75;
+}
+.colortest {
+    color: yellow;
 }
 
 .tag-name {

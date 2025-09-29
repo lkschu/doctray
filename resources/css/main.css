@@ -343,6 +343,10 @@ input[type="file"] {
     justify-content: center;
     align-items: center;
 }
+.colorfill-greyout {
+  color: transparent;
+  text-shadow: 0 0 0 #29292977;
+}
 
 .doc-entry-web-preview {
 	width: 100%;

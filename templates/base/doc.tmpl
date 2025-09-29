@@ -42,11 +42,12 @@
 {{ end }}
 
 {{ define "base/doc-tagbar-segments.tmpl" }}
-    <div class="doc-entry-tagview-segment tooltip"
+
+    <div class="doc-entry-tagview-segment tooltip {{ if .Enabled }}{{ else }}colorfill-greyout{{ end }}"
         hx-post="/tray/post-tag" hx-vals='{"id":{{ .BackRef.DocID }}, "tag":"{{ .Tag.ID}}"}'
         hx-target="closest .doc-entry-tagview-segment" hx-swap="outerHTML"
         style="background-color:{{ if .Enabled }}{{ .Tag.Color }}{{ else }}_{{ end }}">
-        {{ if .Enabled }}{{ .Tag.Sym }}{{ else }} {{ end }}
+        {{ .Tag.Sym }}
     <div class="tooltiptext">{{ .Tag.Name }}</div></div>
 {{ end }}
 

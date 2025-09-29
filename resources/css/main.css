@@ -328,18 +328,18 @@ input[type="file"] {
 	border-color: var(--gray-05);
 	border-style: solid;
 	border-width: 1px;
-	height: 16px;
+	height: 18px;
     font-size: 12px;
 
 	overflow: hidden; /* rounded corners clips children */
     margin-bottom: 2px;
 }
 .doc-entry-tagview:hover {
-    font-size: 18px;
+    font-size: 20px;
     transition-duration: 0.15s;
     transition-delay: 0.5s;
 	border-radius: 0.65rem;
-	height: 32px;
+	height: 36px;
 }
 .doc-entry-tagview-segment {
 	/* border-radius: 0.65rem; */

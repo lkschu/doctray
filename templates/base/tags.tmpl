@@ -12,7 +12,7 @@
 
 {{ define "base/tags-show.tmpl" }}
         <div id="tag-container-tag-list">
-            <ul>
+            <ul id="tag-container-ul">
                 {{ range $tag := .Tags }}
                     {{ template "base/tagshow.tmpl" $tag }}
                 {{ end }}
@@ -50,7 +50,7 @@
 {{ define "base/tags-edit.tmpl" }}
     <form>
         <div id="tag-container-tag-list">
-            <ul>
+            <ul id="tag-container-ul">
                 {{ range $tag := .Tags }}
                     {{ template "base/tagedit.tmpl" $tag }}
                 {{ end }}
@@ -77,7 +77,7 @@
 
 {{ define "base/tagedit.tmpl" }}
     <li id="tag-li-{{ .Nr }}">
-        <div class="tag-container-tag">
+        <div class="tag-container-tag tag-edit">
             <div class="hidden"> <input type="text"  value="{{ .ID }}"     name="tag[{{ .Nr }}]tag_id" class="input-hidden" readonly="readonly"></div>
 
             <div class="tag-name-wrapper tooltip"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .Nr }}]name">

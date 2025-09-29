@@ -1,19 +1,18 @@
 :root {
-    --tag-bg: #522;
+    --tag-bg: var(--color-01);
 }
 #tag-container {
-    /* display: block; */
-    margin: 0.5rem auto 0.5rem auto;
-    /* float: left; */
-    /* max-width: 10em; */
-    border-radius: 1em;
-    background-color: #99f;
-    padding: 1em;
+    margin: 0;
+    width: 100%;
+    border-radius: 1em 1em 0 0;
+    background-color: var(--tray-bg);
+    border-bottom-color: var(--gray-02);
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    padding: 0 0 6px 0;
 }
 
-#tag-container ul {
-    /* line-height: 2.5rem; */
-    width: 85%;
+#tag-container-ul {
     margin: auto;
     overflow-x: auto;
     border-style: solid;
@@ -28,15 +27,17 @@
 }
 
 #tag-container-tag-list {
+    width: 100%;
     display: flex;
     flex-direction: row;
     flex-wrap: nowrap;
+    justify-content: space-between;
 }
 
 #tag-container ul li {
     display: flex;
     flex-direction: column;
-    float: left;
+    /* float: left; */
     /* display: block; */
     background-color: var(--tag-bg);
     color: #fff;
@@ -198,6 +199,9 @@ input[type="checkbox"]:checked::before {
   transform: scale(1);
 }
 
+.tag-container-tag.tag-edit {
+    height: 134px;
+}
 .tag-container-tag {
     font-size: 18px;
     width: 80px;

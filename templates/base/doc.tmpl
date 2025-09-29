@@ -7,11 +7,7 @@
                 <div class="doc-entry-content debug">
                     <div class="doc-entry-tagview debug">
                         {{ range $tagenabled := .Tags_enabled }}
-                            <div class="doc-entry-tagview-segment tooltip"
-                            hx-post="/tray/post-tag" hx-vals='{"id":{{$.DocID}}, "tag":"{{$tagenabled.Tag.ID}}"}' hx-target="#doc-entry-container-{{$.DocID}}" hx-swap="outerHTML"
-                            style="background-color:{{ if $tagenabled.Enabled }}{{ $tagenabled.Tag.Color }}{{ else }}_{{ end }}">
-                            {{ if $tagenabled.Enabled }}{{ $tagenabled.Tag.Sym }}{{ else }}_{{ end }}
-                            <div class="tooltiptext">{{ $tagenabled.Tag.Name }}</div></div>
+                            {{ template "base/doc-tagbar-segments.tmpl" $tagenabled }}
                         {{ end }}
                     </div>
 
@@ -45,19 +41,22 @@
     </div>
 {{ end }}
 
-{{ define "base/post-tag.tmpl" }}
-        <div class="doc-entry-tagview-segment tooltip"
+{{ define "base/doc-tagbar-segments.tmpl" }}
+    <div class="doc-entry-tagview-segment tooltip"
+        hx-post="/tray/post-tag" hx-vals='{"id":{{ .BackRef.DocID }}, "tag":"{{ .Tag.ID}}"}'
+        hx-target="closest .doc-entry-tagview-segment" hx-swap="outerHTML"
         style="background-color:{{ if .Enabled }}{{ .Tag.Color }}{{ else }}_{{ end }}">
-        {{ if .Enabled }}{{ .Tag.Sym }}{{ else }}_{{ end }}
-        <div class="tooltiptext">{{ .Tag.Name }}</div></div>
+        {{ if .Enabled }}{{ .Tag.Sym }}{{ else }} {{ end }}
+    <div class="tooltiptext">{{ .Tag.Name }}</div></div>
 {{ end }}
+
 
 {{ define "base/doc-webpreview.tmpl" }}
     {{ range $preview := . }}
         <a href="{{ $preview.URL }}" target="_blank" class="webpreview">
         <div class="doc-entry-web-preview debug">
             <div class="doc-entry-web-preview-image">
-                <img src="{{ $preview.Image }}" width="100" height="100">
+                <img src="{{ $preview.Image }}" width="100" height="80">
             </div>
             <div class="doc-entry-web-preview-text">
                 <div class="doc-entry-web-preview-title">

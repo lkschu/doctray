@@ -491,6 +491,7 @@ func (p *profile_data) find_post_idx_by_id(id int) int {
 type tag_enabled struct {
 	Tag *tag
 	Enabled bool
+	BackRef *post
 }
 
 type post struct {
@@ -716,7 +717,7 @@ func get_data(sub string) profile_data {
 		}
 		posts[i].Tags_enabled = make([]tag_enabled, 0)
 		for _,t := range profile_data.Tags {
-			tag_enabled := tag_enabled{Enabled: active_tags[t.ID], Tag: &t}
+			tag_enabled := tag_enabled{Enabled: active_tags[t.ID], Tag: &t, BackRef: &posts[i]}
 			posts[i].Tags_enabled = append(posts[i].Tags_enabled, tag_enabled)
 		}
 
@@ -864,7 +865,7 @@ func main() {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
 			}
 			fmt.Printf("Got ID: %s\n", id_str)
-			id, err := strconv.Atoi(id_str)
+			post_id, err := strconv.Atoi(id_str)
 			if err != nil {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
 			}
@@ -875,13 +876,22 @@ func main() {
 
 			sub := get_uuid(c)
 			profile := get_data(sub)
-			p_idx := profile.find_post_idx_by_id(id)
+			p_idx := profile.find_post_idx_by_id(post_id)
 			err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
 			if err != nil {
 				c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
 			}
 			set_data(profile, sub)
-			c.HTML(http.StatusOK, "base/doc.tmpl", render_post(profile.Posts[p_idx]))
+			// c.HTML(http.StatusOK, "base/doc.tmpl", render_post(profile.Posts[p_idx]))
+
+			var t_en *tag_enabled
+			for i,t := range profile.Posts[p_idx].Tags_enabled {
+				if t.Tag.ID == tag_uid {
+					t_en = &profile.Posts[p_idx].Tags_enabled[i]
+					break
+				}
+			}
+			c.HTML(http.StatusOK, "base/doc-tagbar-segments.tmpl", t_en)
 		})
 		router_tray.POST("/tag-toggle-filter", func(c *gin.Context) {
 			sub := get_uuid(c)

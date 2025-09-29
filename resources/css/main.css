@@ -9,7 +9,16 @@
     --gray-09: #191919;
 
     --tray-bg: #ffffff;
-    --tray-entry-bg: var(--gray-01);
+    /* --tray-entry-bg: var(--gray-01); */
+    /* --tray-entry-bg: #c7ec93; */
+    /* --tray-entry-bg: #93b1ec; */
+    --tray-entry-bg: color-mix(in srgb, #93b1ec 60%, transparent);
+
+    /* --tray-entry-webview-bg: rgba(var(--gray-08), 0.9); */
+    /* --tray-entry-webview-bg: color-mix(in srgb, var(--gray-08) 30%, transparent); */
+    --tray-entry-webview-bg: color-mix(in srgb, var(--color-01) 50%, transparent);
+
+    --tray-entry-tag-bg: color-mix(in srgb, var(--gray-08) 20%, transparent);
     --tray-entry-fg: #000000;
     --tray-entry-fg-alt: #191919;
     --shadow-bg: var(--gray-07);
@@ -283,22 +292,34 @@ input[type="file"] {
 	/* flex: 1; */
 	/* background-color: white; */
 	display: flex;
-	border-radius: 0.65rem;
-	border-color: var(--gray-02);
+	border-radius: 0.35rem;
+    transition-duration: 0.15s;
+    transition-delay: 0.5s;
+	border-color: var(--gray-05);
 	border-style: solid;
 	border-width: 1px;
-	height: 30px;
+	height: 16px;
+    font-size: 12px;
 
 	overflow: hidden; /* rounded corners clips children */
+    margin-bottom: 2px;
+}
+.doc-entry-tagview:hover {
+    font-size: 18px;
+    transition-duration: 0.15s;
+    transition-delay: 0.5s;
+	border-radius: 0.65rem;
+	height: 32px;
 }
 .doc-entry-tagview-segment {
-	border-radius: 0.65rem;
-	border-color: var(--gray-02);
+	/* border-radius: 0.65rem; */
+	border-color: var(--gray-05);
 	border-style: solid;
 	border-width: 2px;
-    flex: 1;
-    font-size: 20px;
 
+    background-color: var(--tray-entry-tag-bg);
+
+    flex: 1;
     /* center content */
     display: flex;
     justify-content: center;
@@ -309,13 +330,13 @@ input[type="file"] {
 	width: 100%;
 	box-sizing: border-box;
 	flex: 1;
-	background-color: white;
+	background-color: var(--tray-entry-webview-bg);
 	display: flex;
 	border-radius: 0.65rem;
 	border-color: var(--gray-02);
 	border-style: solid;
 	border-width: 1px;
-	height: 110px;
+	height: 96px;
 	padding: 6px;
 
 	min-width: 0;
@@ -331,7 +352,7 @@ input[type="file"] {
 	display: flex;
 	justify-content: space-between;
     flex-direction: column;
-	height: 100px;
+	height: 85px;
 	overflow: hidden;
 	/* border: 1px solid black; */
 	margin-left: 10px;
@@ -363,7 +384,7 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 .doc-entry-web-preview-url {
 	width: 100%;
 	max-width: 100%;
-	font-size: 15px;
+	font-size: 14px;
 	font-style: italic;
 	line-height: 1.2;
 	color: var(--tray-entry-fg-alt);
@@ -373,8 +394,9 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 	/* TODO: line-height is defined 2x times;*/
 	line-height: 1.2em;
 	max-height: calc(1.2em * 1);
-	background-color: white;
-	border: 1px solid var(--gray-02);
+	/* background-color: rgba(255,255,255,0.2); */
+	/* border: 1px solid var(--gray-02); */
+    padding: 2px 3px 2px 5px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	word-break: break-all;

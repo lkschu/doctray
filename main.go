@@ -287,6 +287,10 @@ func add_formatting_tags__add_url(line_bytes []byte) []byte {
 		url := line_bytes[loc[i][0]:loc[i][1]]
 		ret_bytes = append(ret_bytes, line_bytes[last_indx:loc[i][0]]...)
 		ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("<a href=\"%s\" target=\"_blank\">", url))...)
+		if len(url) > 70 {
+			url = url[:70]
+			url = append(url, []byte("...")...)
+		}
 		ret_bytes = append(ret_bytes, url...)
 		ret_bytes = append(ret_bytes, []byte(fmt.Sprintf("</a>"))...)
 		last_indx = loc[i][1]

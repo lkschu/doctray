@@ -776,8 +776,15 @@ func main() {
 	if ! success {
 		panic("DOCTRAY_CLIENTSECRET not an environment variable!")
 	}
-	issuerUrl    := "https://auth.lukasschumann.de/application/o/test-app/"
-	redirectURL  := "http://127.0.0.1:5555/callback"
+	issuerUrl,success	:= os.LookupEnv("DOCTRAY_ISSUERURL")
+	if ! success {
+		panic("DOCTRAY_ISSUERURL not an environment variable!")
+	}
+	redirectURL,success	:= os.LookupEnv("DOCTRAY_REDIRECTURL")
+	if ! success {
+		panic("DOCTRAY_REDIRECTURL not an environment variable!")
+	}
+
 	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(time.Minute.Seconds()*2),issuerUrl, redirectURL)
 
 

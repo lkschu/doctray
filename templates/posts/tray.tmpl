@@ -13,6 +13,12 @@
 <body>
 <div id="page-container">
     {{ template "base/header.tmpl" }}
+    {{ template "posts/workspace-container.tmpl" . }}
+    {{ template "base/footer.tmpl" }}
+{{ end }}
+
+
+{{ define "posts/workspace-container.tmpl" }}
     <div id="workspace-container">
     {{ template "base/tags.tmpl" . }}
 	<script>
@@ -23,6 +29,4 @@
 	</script>
     {{ template "base/doc-list.tmpl" . }}
     </div>
-
-{{ template "base/footer.tmpl" }}
 {{ end }}

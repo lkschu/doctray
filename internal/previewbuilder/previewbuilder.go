@@ -1,4 +1,5 @@
 package previewbuilder
+// package main
 
 import (
 	"bytes"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"image"
 	_ "image/gif"
@@ -31,13 +33,16 @@ var (
 		// this one is article, so it's parse-able
 		"https://www.nytimes.com/2019/02/20/climate/climate-national-security-threat.html",
 		// while this one is not an article, so readability will fail to parse.
-		"https://www.nytimes.com/",
-		// "https://www.reddit.com/r/Finanzen/comments/1nhhohn/ich_habe_wieder_arbeit_bin_etwas_planlos_was_ich/", // only text
-		"https://www.reddit.com/r/Finanzen/comments/1nh93j6/rossmann_otto_und_mediamarkt_wollen_wero_f%C3%BCr/", // link with image
-		"https://www.reddit.com/r/Finanzen/comments/1nexlq1/wer_von_euch_war_das/", // only image
-		"https://www.reddit.com/r/Finanzen/comments/1n97ax3/was_machen_die_menschen_da_%C3%BCberhaupt/", // image and text
-		"https://www.reddit.com/r/videos/comments/1nh93sg/the_streaming_war_is_over_piracy_won/", // yt video
+		// "https://www.nytimes.com/",
+		// // "https://www.reddit.com/r/Finanzen/comments/1nhhohn/ich_habe_wieder_arbeit_bin_etwas_planlos_was_ich/", // only text
+		// "https://www.reddit.com/r/Finanzen/comments/1nh93j6/rossmann_otto_und_mediamarkt_wollen_wero_f%C3%BCr/", // link with image
+		// "https://www.reddit.com/r/Finanzen/comments/1nexlq1/wer_von_euch_war_das/", // only image
+		// "https://www.reddit.com/r/Finanzen/comments/1n97ax3/was_machen_die_menschen_da_%C3%BCberhaupt/", // image and text
+		// "https://www.reddit.com/r/videos/comments/1nh93sg/the_streaming_war_is_over_piracy_won/", // yt video
 		"https://acrobat.adobe.com/id/urn:aaid:sc:EU:dee0f93c-e275-4f41-b90e-e8cfcb99c750",
+		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B?crid=Z4E4WTR6FGBY&dib=eyJ2IjoiMSJ9.vqZyeIbbL_r-FygNTNL3v3EFIzJ9mZ4EDlFkXGwh7RBDIjHzgxVNFwF3VaacojUHQglx4GWzBaAFPmVW_RQwVXiEOViep9yZi-_B65FB4wdkANg6utolYsWvqG8eYs9TF19rbT6IgY-VAzW_Jz0XEr26OMrc8y1QSL1wJfaUS5RELAFWRgvKBt6beTDfVmBe8TIBBUHGvHJb5xZ4w27IYeSO4yaVxjJltxcEI9H7bkA.WEDs5Akuig7IHxYxnWK22EEpNeWel0eFM8XK_OfEnTo&dib_tag=se&keywords=power%2Bbank&qid=1746199580&sprefix=power%2Caps%2C122&sr=8-15&th=1",
+		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B",
+		"https://imgur.com/chucks-bad-day-CDXTSxi",
 	}
 )
 
@@ -87,7 +92,9 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	// 2. Find alternative images
 	if urlpreview.Image == "" {
 		extracted_image_urls := getImagesInRawHTML(raw_html)
+		// fmt.Println(extracted_image_urls)
 		extracted_image_sizes := make(map[string][]int)
+		// fmt.Println(extracted_image_sizes)
 		max_size := 1
 		max_index := -1
 		for i,u := range extracted_image_urls {
@@ -110,6 +117,9 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 		if max_index >= 0 {
 			urlpreview.Image = extracted_image_urls[max_index]
 		}
+	}
+	if urlpreview.Image == "" && urlpreview.Favicon != "" || urlpreview.Image != "" && !checkIfOnline(urlpreview.Image) {
+		urlpreview.Image = urlpreview.Favicon
 	}
 
 
@@ -145,6 +155,18 @@ func (up URLPreview) String() string {
 	return sb.String()
 }
 
+func checkIfOnline(url string) bool {
+	// fmt.Println(url)
+	client := http.Client{
+		Timeout: 500 * time.Millisecond,
+	}
+	resp, err := client.Head(url)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
 
 func removeDuplicateStr(str_slice []string) []string {
 	all_keys := make(map[string]bool)

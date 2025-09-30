@@ -13,6 +13,8 @@
 
     --post-font-size: 16px;
     --post-font-size-url: 14px;
+    --compose-font-size: 16px;
+
     --webpreview-font-size-body: 14px;
     --webpreview-font-size-url: 14px;
 
@@ -219,7 +221,7 @@ input[type="file"] {
     /* text-overflow: ellipsis; */
     width: 100%;
     box-sizing: border-box;
-    font-size: 18px;
+    font-size: var(--compose-font-size);
     min-height: 4rem;
     padding: 6px 12px;
     cursor: pointer;
@@ -574,7 +576,7 @@ tt {
 	unicode-bidi: plaintext;
 }
 .doc-entry-stats{
-    font-size: 10px;
+    font-size: 11px;
     font-style: italic;
     color: var(--gray-08);
     display: flex;

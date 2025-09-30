@@ -405,6 +405,10 @@ func add_formatting_tags_to_string(s string) string{
 	return return_string.String()
 }
 
+func render_workspace_container_to_html(c *gin.Context)  {
+		sub := get_uuid(c)
+		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", render_all(get_data(sub)))
+}
 
 func render_posts_to_html(c *gin.Context)  {
 		sub := get_uuid(c)
@@ -901,6 +905,13 @@ func main() {
 			}
 			c.HTML(http.StatusOK, "base/doc-tagbar-segments.tmpl", t_en)
 		})
+		router_tray.POST("/star-filter", func(c *gin.Context) {
+			sub := get_uuid(c)
+			profile := get_data(sub)
+			profile.Only_favorites = !profile.Only_favorites
+			set_data(profile, sub)
+			render_workspace_container_to_html(c)
+		})
 		router_tray.POST("/tag-toggle-filter", func(c *gin.Context) {
 			sub := get_uuid(c)
 			profile := get_data(sub)
@@ -916,7 +927,7 @@ func main() {
 			fmt.Printf("Toggled '%s' to %t\n", val.ID, val.Enabled)
 			set_data(profile, sub)
 
-			render_posts_to_html(c)
+			render_workspace_container_to_html(c)
 		})
 		router_tray.POST("/tag-edit", func(c *gin.Context){
 			sub := get_uuid(c)

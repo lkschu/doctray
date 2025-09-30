@@ -22,7 +22,7 @@
                 hx-target="#tag-container"
                 hx-swap="outerHTML">Edit</button>
             <button class=tag-container-buttons id="star-filter-button" hx-post="/tray/star-filter"
-                hx-target="#doc-container"
+                hx-target="#workspace-container"
                 hx-swap="outerHTML scroll:bottom"
                 >
                 <!--<span class="material-symbols-outlined colortest">star_shine</span>-->
@@ -47,7 +47,7 @@
                 hx-trigger="change"
                 hx-post="/tray/tag-toggle-filter"
                 hx-vals='{"id":"{{ .ID }}"}'
-                hx-target="#doc-container"
+                hx-target="#workspace-container"
                 hx-swap="outerHTML scroll:bottom"
                 >
               <span class="checkmark"></span>

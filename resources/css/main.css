@@ -11,6 +11,11 @@
     --width-display-message: 90%;
     --width-compose-message: 90%;
 
+    --post-font-size: 16px;
+    --post-font-size-url: 14px;
+    --webpreview-font-size-body: 14px;
+    --webpreview-font-size-url: 14px;
+
     --tray-bg: #ffffff;
     /* --tray-entry-bg: var(--gray-01); */
     /* --tray-entry-bg: #c7ec93; */
@@ -121,7 +126,6 @@ body {
 }
 
 #workspace-container {
-    overflow: hidden;
     position: absolute;
     top: calc(1% + 2.5rem); /* header height */
     left: 50%;
@@ -355,10 +359,16 @@ input[type="file"] {
     justify-content: center;
     align-items: center;
 }
+
 .colorfill-greyout {
   color: transparent;
+  font-size: 20px;
   text-shadow: 0 0 0 #29292977;
 }
+.colorfill-enabled {
+  font-size: 20px;
+}
+
 
 .doc-entry-web-preview {
 	width: 100%;
@@ -383,6 +393,7 @@ input[type="file"] {
 .doc-entry-web-preview-text{
 	width: 100%;
 	box-sizing: border-box;
+    font-size: var(--webpreview-font-size-body);
 	display: flex;
 	justify-content: space-between;
     flex-direction: column;
@@ -418,7 +429,7 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 .doc-entry-web-preview-url {
 	width: 100%;
 	max-width: 100%;
-	font-size: 14px;
+	font-size: var(--webpreview-font-size-body);
 	font-style: italic;
 	line-height: 1.2;
 	color: var(--tray-entry-fg-alt);
@@ -430,7 +441,7 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 	max-height: calc(1.2em * 1);
 	/* background-color: rgba(255,255,255,0.2); */
 	/* border: 1px solid var(--gray-02); */
-    padding: 2px 3px 2px 5px;
+    padding: 2px 3px 2px 0px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	word-break: break-all;
@@ -442,9 +453,12 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 	display: block;
 	margin: auto;
 }
-.doc-entry-type-container{
-    font-size: 16px;
-    /* background-color: var(--color-02); */
+
+.doc-entry-type-container a {
+    font-size: var(--post-font-size-url);
+}
+.doc-entry-type-container {
+    font-size: var(--post-font-size);
 	padding: 5px;
     margin-bottom: 0.4rem;
 

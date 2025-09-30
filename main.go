@@ -1004,11 +1004,15 @@ func main() {
 				}
 
 
-				date := time.Now().UTC().Format(http.TimeFormat)
+				date_now_utc := time.Now().UTC()
+				date_str := date_now_utc.Format(http.TimeFormat)
 				if len(files) == 0 {
+					if title == "" {
+						return false
+					}
 					profile := get_data(sub)
 					data := profile.Posts
-					data = append(data, post{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date, Webpreview: docentry_new_webpreviews})
+					data = append(data, post{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date_str, Webpreview: docentry_new_webpreviews})
 					profile.Posts = data
 					set_data(profile, sub)
 				} else {
@@ -1016,10 +1020,13 @@ func main() {
 					doc_id := get_data_new_id(&profile.Posts)
 					defer func() {set_data(profile, sub)} ()
 					docentry_new_files := make([]docentry_file, 0)
-					new_data := post{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
+					new_data := post{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date_str, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
 					for _, file := range files {
-						basename := fmt.Sprintf("%d__%s", time.Now().UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
+						basename := fmt.Sprintf("%d__%d__%s", doc_id, date_now_utc.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
 						filename := "uploads/"+ sub +"/" + basename
+						fmt.Println(filename)
+						fmt.Println(date_str)
+						fmt.Println(time.Parse(http.TimeFormat, date_str))
 						// TODO: error handling if first file is uploaded but later are failing
 						if err := c.SaveUploadedFile(file, filename); err != nil {
 							c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
@@ -1028,13 +1035,15 @@ func main() {
 						docentry_new_files = append(docentry_new_files, docentry_file{Url: "/media/"+basename, OrgName: path.Base(file.Filename), Name: basename})
 						new_data.Files = docentry_new_files
 					}
-					// fmt.Println(data[len(data)-1].String())
 					profile.Posts = append(profile.Posts, new_data)
 				}
 				return true
 			} (c)
 			if ret {
 				render_posts_to_html(c)
+			} else {
+				// c.String(http.StatusBadRequest, "Empty message!\n")
+				render_posts_to_html(c) // just resend the whole section, otherwise the upload progress bar must be changed
 			}
 		})
 

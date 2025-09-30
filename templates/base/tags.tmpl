@@ -26,7 +26,10 @@
                 hx-swap="outerHTML scroll:bottom"
                 >
                 <!--<span class="material-symbols-outlined colortest">star_shine</span>-->
-                <span class="colorfill">⭐</span>
+                <div class="tooltip">
+                    <span class="{{ if .Only_favorites }}colorfill-enabled{{ else }}colorfill-greyout{{ end }}">⭐</span>
+                    <div class="tooltiptext-tagedit">Only show starred posts</div>
+                </div>
                 </button>
         </div>
 {{ end }}

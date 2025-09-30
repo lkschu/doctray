@@ -1,0 +1,14 @@
+services:
+  server:
+    image: docker-doctray:latest
+    ports:
+      - "5555:5555"
+    environment:
+      - "DOCTRAY_CLIENTID=1111111111111111111111111111111111111111"
+      - "DOCTRAY_CLIENTSECRET=2222222222222222222222222222222222222222222222222222222222222222222222222222222"
+      - "DOCTRAY_ISSUERURL=https://auth.xyz.com/application/o/test-app/"
+      - "DOCTRAY_REDIRECTURL=https://your-server.com/callback"
+    volumes:
+      - type: bind
+        source: /path/to/the/host/data/dir/
+        target: /data

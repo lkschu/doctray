@@ -45,6 +45,7 @@ import (
 // TODO: refactor this page and only then continue with the acutal doctray functionality
 // TODO: doctray tags
 
+var DATA_BASE_PATH = ""
 
 
 
@@ -105,6 +106,7 @@ func assert(a bool) {
 		panic(a)
 	}
 }
+
 
 const (
 	token_bold_open string = "<b>"
@@ -648,7 +650,7 @@ func render_all(profile profile_data) profile_data {
 
 
 func get_data(sub string) profile_data {
-	file, err := os.Open(fmt.Sprintf("./data/%s.json", sub))
+	file, err := os.Open(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub))
 	if errors.Is(err, fs.ErrNotExist) {
 		return profile_data{}
 	}
@@ -746,7 +748,7 @@ func set_data(profile profile_data, sub string) {
 		panic(err)
 	}
 
-	err = os.WriteFile(fmt.Sprintf("./data/%s.json", sub), b, 0644)
+	err = os.WriteFile(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub), b, 0644)
 	if err != nil{
 		panic(err)
 	}
@@ -779,6 +781,14 @@ func main() {
 	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(time.Minute.Seconds()*2),issuerUrl, redirectURL)
 
 
+	basepath,success	:= os.LookupEnv("DOCTRAY_TARGET_DIRECTORY")
+	if ! success {
+		panic("DOCTRAY_TARGET_DIRECTORY not an environment variable!")
+	}
+	if stat, err := os.Stat(basepath); err != nil || !stat.IsDir() {
+		panic(fmt.Sprintf("DOCTRAY_TARGET_DIRECTORY specified path (%s) is not available!", basepath))
+	}
+	DATA_BASE_PATH = basepath
 
 	router := gin.Default()
 	router.StaticFile("/favicon.ico", "./resources/favicon.ico")
@@ -823,7 +833,7 @@ func main() {
 			item := c.Param("item")
 			sub := get_uuid(c)
 			fmt.Println("Item: ", item)
-			fullName := "uploads/" + sub + "/" + item
+			fullName := DATA_BASE_PATH + "/uploads/" + sub + "/" + item
 			fmt.Println("Fullpath: ", fullName)
 			c.File(fullName)
 		})
@@ -1038,7 +1048,7 @@ func main() {
 					new_data := post{DocID:doc_id,Title:template.HTML(title),Type:doctype_file,Date: date_str, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
 					for _, file := range files {
 						basename := fmt.Sprintf("%d__%d__%s", doc_id, date_now_utc.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
-						filename := "uploads/"+ sub +"/" + basename
+						filename := DATA_BASE_PATH + "/uploads/"+ sub +"/" + basename
 						fmt.Println(filename)
 						fmt.Println(date_str)
 						fmt.Println(time.Parse(http.TimeFormat, date_str))
@@ -1088,7 +1098,7 @@ func main() {
 				for _,f := range profile.Posts[to_drop].Files {
 					if strings.HasPrefix(f.Url, "/media/") {
 						basename := strings.TrimPrefix(f.Url, "/media/")
-						os.Remove("uploads/"+sub+"/"+basename)
+						os.Remove(DATA_BASE_PATH +"/uploads/"+sub+"/"+basename)
 					}
 				}
 				profile.Posts = slices.Delete(profile.Posts,to_drop,to_drop+1)

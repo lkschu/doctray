@@ -178,7 +178,7 @@ func (handler *AuthHandler) IsLoggedIn(ctx *gin.Context) bool {
 			if exp.(int64) > now {
 				return true
 			} else {
-				fmt.Println("AuthHandler: expired")
+				// fmt.Println("AuthHandler: expired")
 			}
 		} else {
 			fmt.Println("AuthHandler: no expiration date")
@@ -205,9 +205,9 @@ func (handler *AuthHandler) GetUserID(ctx *gin.Context) (string, error) {
 func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
 	return func(ctx *gin.Context) {
 		if handler.IsLoggedIn(ctx) {
-			fmt.Println("ENSURE_LOGGEDIN: Authorized!")
+			// fmt.Println("ENSURE_LOGGEDIN: Authorized!")
 		} else {
-			fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
+			// fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
 			handler.Login()(ctx)
 		}
 	}

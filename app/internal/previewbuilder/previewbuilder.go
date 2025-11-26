@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"unicode"
+	"unicode/utf8"
+
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -43,8 +46,37 @@ var (
 		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B?crid=Z4E4WTR6FGBY&dib=eyJ2IjoiMSJ9.vqZyeIbbL_r-FygNTNL3v3EFIzJ9mZ4EDlFkXGwh7RBDIjHzgxVNFwF3VaacojUHQglx4GWzBaAFPmVW_RQwVXiEOViep9yZi-_B65FB4wdkANg6utolYsWvqG8eYs9TF19rbT6IgY-VAzW_Jz0XEr26OMrc8y1QSL1wJfaUS5RELAFWRgvKBt6beTDfVmBe8TIBBUHGvHJb5xZ4w27IYeSO4yaVxjJltxcEI9H7bkA.WEDs5Akuig7IHxYxnWK22EEpNeWel0eFM8XK_OfEnTo&dib_tag=se&keywords=power%2Bbank&qid=1746199580&sprefix=power%2Caps%2C122&sr=8-15&th=1",
 		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B",
 		"https://imgur.com/chucks-bad-day-CDXTSxi",
+		"https://arxiv.org/pdf/2107.06751",
 	}
 )
+
+func StringCleanup(s string, maxlength int) string {
+	bytes := []byte(s)
+	out_len := len(bytes)
+	if maxlength != -1 && maxlength < out_len {
+		out_len = maxlength
+	}
+    out := make([]rune, 0, out_len)
+
+    for len(bytes) > 0 && len(out) < out_len {
+        r, size := utf8.DecodeRune(bytes)
+
+        switch {
+        case r == utf8.RuneError && size == 1:
+            // Invalid byte → skip
+		case !unicode.IsPrint(r):
+			// skip non-printable runes
+        case unicode.IsControl(r) && r != '\n' && r != '\t':
+            // Skip control chars except useful ones
+        default:
+            out = append(out, r)
+        }
+
+        bytes = bytes[size:]
+    }
+
+    return string(out)
+}
 
 type URLPreview struct {
 	URL string
@@ -73,6 +105,9 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
+	if len(body) > 10000 {
+		body = body[:10000]
+	}
 	raw_html := string(body)
 	resp.Body = io.NopCloser(bytes.NewBuffer([]byte(raw_html)))
 
@@ -81,8 +116,8 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 		return urlpreview, errors.New("Parse failure")
 	}
 	urlpreview.URL = input_url
-	urlpreview.Title = article.Title
-	urlpreview.Description = article.Excerpt
+	urlpreview.Title = StringCleanup(article.Title, 100)
+	urlpreview.Description = StringCleanup(article.Excerpt, 360)
 	urlpreview.Favicon = article.Favicon
 	urlpreview.Domain = url_parsed.Hostname()
 

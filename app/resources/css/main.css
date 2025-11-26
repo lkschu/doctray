@@ -194,7 +194,7 @@ body {
     justify-content: space-between;
 }
 .combined-post-inputs {
-    background-color: bisque;
+    background-color: var(--tray-bg);
     /* width: 100%; */
     /* padding: 2px; */
 }
@@ -250,6 +250,10 @@ input[type="file"] {
     padding: 6px 12px;
     cursor: pointer;
 }
+textarea[name=title] {
+  resize: none;
+}
+
 
 /* .new-post{ */
 /*     display: flex; */

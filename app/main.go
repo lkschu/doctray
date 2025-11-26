@@ -498,6 +498,14 @@ func (p *profile_data) find_post_idx_by_id(id int) int {
 	}
 	return ret
 }
+func (p *profile_data) String() string {
+	b,err := json.Marshal(p)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	return string(b)
+}
 
 type tag_enabled struct {
 	Tag *tag
@@ -1043,6 +1051,7 @@ func main() {
 						return false
 					}
 					profile := get_data(sub)
+					// defer func() {set_data(profile, sub)} ()
 					data := profile.Posts
 					data = append(data, post{DocID:get_data_new_id(&data),Title:template.HTML(title),Type:doctype_mesage, Date: date_str, Webpreview: docentry_new_webpreviews})
 					profile.Posts = data
@@ -1074,7 +1083,7 @@ func main() {
 			if ret {
 				render_posts_to_html(c)
 			} else {
-				// c.String(http.StatusBadRequest, "Empty message!\n")
+				c.String(http.StatusBadRequest, "Empty message!\n")
 				render_posts_to_html(c) // just resend the whole section, otherwise the upload progress bar must be changed
 			}
 		})

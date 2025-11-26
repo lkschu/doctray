@@ -47,6 +47,8 @@ var (
 		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B",
 		"https://imgur.com/chucks-bad-day-CDXTSxi",
 		"https://arxiv.org/pdf/2107.06751",
+		"https://www.reddit.com/r/Ratschlag/comments/1p2pw20/ich_leide_extrem_unter_k%C3%A4lte",
+		"https://www.reddit.com/r/luftablassen/comments/1ovz5mk/bleibt_mir_weg_mit_euren_jour_fixes/",
 	}
 )
 
@@ -105,8 +107,8 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
-	if len(body) > 10000 {
-		body = body[:10000]
+	if len(body) > 500000 {   // reddit can't be parsed for len <400kb ...
+		body = body[:500000]
 	}
 	raw_html := string(body)
 	resp.Body = io.NopCloser(bytes.NewBuffer([]byte(raw_html)))
@@ -116,8 +118,8 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 		return urlpreview, errors.New("Parse failure")
 	}
 	urlpreview.URL = input_url
-	urlpreview.Title = StringCleanup(article.Title, 100)
-	urlpreview.Description = StringCleanup(article.Excerpt, 360)
+	urlpreview.Title = StringCleanup(article.Title, 200)
+	urlpreview.Description = StringCleanup(article.Excerpt, 500)
 	urlpreview.Favicon = article.Favicon
 	urlpreview.Domain = url_parsed.Hostname()
 

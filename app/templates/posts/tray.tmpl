@@ -25,7 +25,7 @@
 	setInterval(() => {
         htmx.ajax('POST', '/tray/ping', {values: {title:"ping sent"}, swap:'none'})
         //htmx.ajax('GET', '/login', {swap:'none'})
-	}, 1 * 50 * 1000);
+	}, 1 * 110 * 1000);
 	</script>
     {{ template "base/doc-list.tmpl" . }}
     </div>

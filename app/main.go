@@ -357,7 +357,6 @@ func add_formatting_tags_to_string(s string) string{
 
 
 		line_bytes := []byte(line)
-		// fmt.Println(string(line_bytes))
 		line_bytes = add_formatting_tags__add_text_decoration(line_bytes)
 		line_bytes = add_formatting_tags__add_url(line_bytes)
 
@@ -379,7 +378,6 @@ func add_formatting_tags_to_string(s string) string{
 			return ret
 		}
 
-		// fmt.Println(string(line_bytes))
 		list_added := false
 		if strings.HasPrefix(new_line, "- ") || strings.HasPrefix(new_line, " - ") {
 			list_added = true
@@ -394,7 +392,6 @@ func add_formatting_tags_to_string(s string) string{
 			line_bytes = append([]byte("<ul><div class=\"markdown-list-inner\"><li>"), line_bytes...)
 			line_bytes = append(line_bytes,[]byte("</li></div></ul>")...)
 		}
-		// fmt.Println("Wrapped:{" + string(line_bytes) + "}\n\n")
 		return_string.WriteString(string(line_bytes))
 		if !list_added {
 			return_string.WriteString("<br>")
@@ -609,10 +606,7 @@ func get_data_new_id(data *[]post) int {
 
 
 func render_post(p post) post {
-	// fmt.Println(data[i].String())
 	p.Title = template.HTML(add_formatting_tags_to_string(string(p.Title)))
-	// rendered_posts[i] = data[i]
-	// fmt.Println(data[i].String())
 	return p
 }
 
@@ -713,7 +707,6 @@ func get_data(sub string) profile_data {
 					} else {
 						posts[i].Files[j].Icon = known_file_suffixes[".default"]
 					}
-					// fmt.Println(f.String())
 				}
 			}
 		}
@@ -747,7 +740,6 @@ func get_data(sub string) profile_data {
 func set_data(profile profile_data, sub string) {
 	profile.normalize_tag_nrs()
 	b,err := json.Marshal(profile)
-	// fmt.Println(string(b))
 	if err != nil {
 		panic(err)
 	}
@@ -1023,7 +1015,9 @@ func main() {
 				} else {
 					title = ""
 				}
-				fmt.Println("title Value: ", titles)
+
+				title_for_loggin, err := json.Marshal(titles)
+				fmt.Println("title Value: ", string(title_for_loggin))
 
 				//webpreviews
 				preview_url_idxs := find_url_in_string([]byte(title))

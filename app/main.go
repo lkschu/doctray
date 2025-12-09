@@ -255,11 +255,6 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 	}
 	sort.Slice(matched_tags, func(i,j int) bool { return matched_tags[i].position < matched_tags[j].position })
 
-	if len(matched_tags) == 0 {
-		return line_bytes
-	}
-
-
 	// Replace tokens with html tags
 	var line_rebuilt []byte
 	last_idx := 0
@@ -274,6 +269,7 @@ func add_formatting_tags__add_text_decoration(line_bytes []byte) []byte {
 
 		line_rebuilt = append(line_rebuilt, []byte(tag.token)...)
 	}
+	line_rebuilt = append(line_rebuilt, line_bytes[last_idx:]...)
 	return line_rebuilt
 }
 

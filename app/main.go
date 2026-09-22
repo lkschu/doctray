@@ -47,6 +47,7 @@ import (
 var DATA_BASE_PATH = ""
 
 const auth_session_duration = 8 * time.Hour
+const maxPreviewsPerMessage = 3
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
@@ -1033,16 +1034,22 @@ func main() {
 
 				//webpreviews
 				preview_url_idxs := find_url_in_string([]byte(title))
-				preview_urls := make([]string, len(preview_url_idxs))
-				for i, idx_pair := range preview_url_idxs {
-					preview_urls[i] = string([]byte(title)[idx_pair[0]:idx_pair[1]])
-				}
-				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
-				for _, raw_url_for_preview := range preview_urls {
+				preview_urls := make([]string, 0, maxPreviewsPerMessage)
+				seen_preview_urls := make(map[string]bool)
+				for _, idx_pair := range preview_url_idxs {
+					raw_url_for_preview := string([]byte(title)[idx_pair[0]:idx_pair[1]])
 					url_for_preview, err := urlutil.NormalizeHTTPURL(raw_url_for_preview)
-					if err != nil {
+					if err != nil || seen_preview_urls[url_for_preview] {
 						continue
 					}
+					seen_preview_urls[url_for_preview] = true
+					preview_urls = append(preview_urls, url_for_preview)
+					if len(preview_urls) == maxPreviewsPerMessage {
+						break
+					}
+				}
+				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
+				for _, url_for_preview := range preview_urls {
 					preview_build, err := previewbuilder.URLPreview{}.New(url_for_preview)
 					if err == nil {
 						docentry_new_webpreviews = append(docentry_new_webpreviews, preview_build)

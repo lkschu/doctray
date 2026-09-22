@@ -1,12 +1,12 @@
 package previewbuilder
-// package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -19,38 +19,140 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/http"
+	"net/netip"
 	"net/url"
 
 	readability "github.com/go-shiori/go-readability"
 )
 
-// INFO:
-// - Extract base preview from go-readability
-// - If no image -> get all images and get biggest image (with fitting dimensions to ignore banners)
-// - Overwrite title for specific websites (i.e. Reddit)
-
-
-
-var (
-	urls = []string{
-		// this one is article, so it's parse-able
-		"https://www.nytimes.com/2019/02/20/climate/climate-national-security-threat.html",
-		// while this one is not an article, so readability will fail to parse.
-		// "https://www.nytimes.com/",
-		// // "https://www.reddit.com/r/Finanzen/comments/1nhhohn/ich_habe_wieder_arbeit_bin_etwas_planlos_was_ich/", // only text
-		// "https://www.reddit.com/r/Finanzen/comments/1nh93j6/rossmann_otto_und_mediamarkt_wollen_wero_f%C3%BCr/", // link with image
-		// "https://www.reddit.com/r/Finanzen/comments/1nexlq1/wer_von_euch_war_das/", // only image
-		// "https://www.reddit.com/r/Finanzen/comments/1n97ax3/was_machen_die_menschen_da_%C3%BCberhaupt/", // image and text
-		// "https://www.reddit.com/r/videos/comments/1nh93sg/the_streaming_war_is_over_piracy_won/", // yt video
-		"https://acrobat.adobe.com/id/urn:aaid:sc:EU:dee0f93c-e275-4f41-b90e-e8cfcb99c750",
-		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B?crid=Z4E4WTR6FGBY&dib=eyJ2IjoiMSJ9.vqZyeIbbL_r-FygNTNL3v3EFIzJ9mZ4EDlFkXGwh7RBDIjHzgxVNFwF3VaacojUHQglx4GWzBaAFPmVW_RQwVXiEOViep9yZi-_B65FB4wdkANg6utolYsWvqG8eYs9TF19rbT6IgY-VAzW_Jz0XEr26OMrc8y1QSL1wJfaUS5RELAFWRgvKBt6beTDfVmBe8TIBBUHGvHJb5xZ4w27IYeSO4yaVxjJltxcEI9H7bkA.WEDs5Akuig7IHxYxnWK22EEpNeWel0eFM8XK_OfEnTo&dib_tag=se&keywords=power%2Bbank&qid=1746199580&sprefix=power%2Caps%2C122&sr=8-15&th=1",
-		"https://www.amazon.de/Anker-Powerbank-20-000mAh-integriertem-High-Speed/dp/B0CZ9LH53B",
-		"https://imgur.com/chucks-bad-day-CDXTSxi",
-		"https://arxiv.org/pdf/2107.06751",
-		"https://www.reddit.com/r/Ratschlag/comments/1p2pw20/ich_leide_extrem_unter_k%C3%A4lte",
-		"https://www.reddit.com/r/luftablassen/comments/1ovz5mk/bleibt_mir_weg_mit_euren_jour_fixes/",
-	}
+const (
+	previewRequestTimeout = 5 * time.Second
+	maxPreviewBodyBytes  = 500000
+	maxImageConfigBytes  = 1024 * 1024
 )
+
+var nonPublicPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("169.254.0.0/16"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("224.0.0.0/4"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("::/128"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("fc00::/7"),
+	netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("ff00::/8"),
+}
+
+var previewHTTPClient = &http.Client{
+	Timeout: previewRequestTimeout,
+	Transport: &http.Transport{
+		DialContext: dialPublicContext,
+	},
+	CheckRedirect: func(request *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("too many redirects")
+		}
+		return validatePublicURL(request.URL)
+	},
+}
+
+func isPublicIP(ip net.IP) bool {
+	address, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	address = address.Unmap()
+	if !address.IsGlobalUnicast() {
+		return false
+	}
+	for _, prefix := range nonPublicPrefixes {
+		if prefix.Contains(address) {
+			return false
+		}
+	}
+	return true
+}
+
+func validatePublicURL(parsedURL *url.URL) error {
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return errors.New("URL must use HTTP or HTTPS")
+	}
+	hostname := parsedURL.Hostname()
+	if hostname == "" {
+		return errors.New("URL has no host")
+	}
+	if ip := net.ParseIP(hostname); ip != nil && !isPublicIP(ip) {
+		return errors.New("URL host is not public")
+	}
+	return nil
+}
+
+func dialPublicContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+
+	dialer := &net.Dialer{}
+	var lastErr error
+	for _, resolvedAddress := range resolved {
+		if !isPublicIP(resolvedAddress.IP) {
+			continue
+		}
+		connection, err := dialer.DialContext(ctx, network, net.JoinHostPort(resolvedAddress.IP.String(), port))
+		if err == nil {
+			return connection, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("URL host %q has no public address", host)
+}
+
+func fetchPublicURL(method, rawURL string) (*http.Response, *url.URL, error) {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validatePublicURL(parsedURL); err != nil {
+		return nil, nil, err
+	}
+
+	request, err := http.NewRequest(method, parsedURL.String(), nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	response, err := previewHTTPClient.Do(request)
+	if err != nil {
+		return nil, nil, err
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		response.Body.Close()
+		return nil, nil, fmt.Errorf("unexpected HTTP status %s", response.Status)
+	}
+	if response.Request == nil || response.Request.URL == nil {
+		response.Body.Close()
+		return nil, nil, errors.New("response has no final URL")
+	}
+
+	return response, response.Request.URL, nil
+}
 
 func StringCleanup(s string, maxlength int) string {
 	bytes := []byte(s)
@@ -92,32 +194,26 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	urlpreview := URLPreview{}
 
 	// 1. Get bases
-	resp, err := http.Get(input_url)
+	resp, url_parsed, err := fetchPublicURL(http.MethodGet, input_url)
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
 	defer resp.Body.Close()
 
-	url_parsed, err := url.Parse(input_url)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPreviewBodyBytes+1))
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return urlpreview, errors.New("Parse failure")
-	}
-	if len(body) > 500000 {   // reddit can't be parsed for len <400kb ...
-		body = body[:500000]
+	if len(body) > maxPreviewBodyBytes {
+		body = body[:maxPreviewBodyBytes]
 	}
 	raw_html := string(body)
-	resp.Body = io.NopCloser(bytes.NewBuffer([]byte(raw_html)))
 
-	article, err := readability.FromReader(resp.Body, url_parsed)
+	article, err := readability.FromReader(bytes.NewReader(body), url_parsed)
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
-	urlpreview.URL = input_url
+	urlpreview.URL = url_parsed.String()
 	urlpreview.Title = StringCleanup(article.Title, 200)
 	urlpreview.Description = StringCleanup(article.Excerpt, 500)
 	urlpreview.Favicon = article.Favicon
@@ -167,14 +263,6 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 		returned_matches := reddit_title_regex.FindAllStringSubmatch(raw_html, -1)
 		if len(returned_matches) >= 1 && len(returned_matches[0]) >=2 && returned_matches[0][1] != "" {
 			urlpreview.Title = returned_matches[0][1]
-		} else {
-			f, err := os.Create(input_url)
-			if err != nil {
-			    panic(err)
-			}
-			defer f.Close()
-			f.WriteString(raw_html)
-			f.Sync()
 		}
 	}
 
@@ -193,11 +281,7 @@ func (up URLPreview) String() string {
 }
 
 func checkIfOnline(url string) bool {
-	// fmt.Println(url)
-	client := http.Client{
-		Timeout: 500 * time.Millisecond,
-	}
-	resp, err := client.Head(url)
+	resp, _, err := fetchPublicURL(http.MethodHead, url)
 	if err != nil {
 		return false
 	}
@@ -235,7 +319,7 @@ func getImagesInRawHTML(html string) []string {
 
 
 func getImageSize(url string) (int, int, error) {
-	resp, err := http.Get(url)
+	resp, _, err := fetchPublicURL(http.MethodGet, url)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -243,27 +327,10 @@ func getImageSize(url string) (int, int, error) {
 	defer resp.Body.Close()
 
 	// DecodeConfig only reads enough to determine format + dimensions
-	cfg, _, err := image.DecodeConfig(resp.Body)
+	cfg, _, err := image.DecodeConfig(io.LimitReader(resp.Body, maxImageConfigBytes))
 	if err != nil {
 		return 0, 0, err
 	}
 	return cfg.Width, cfg.Height, nil
 }
 
-
-
-
-
-
-
-func main() {
-
-	for _, url := range urls {
-		preview, err := URLPreview{}.New(url)
-		if err!= nil {
-			panic(err)
-		}
-		fmt.Println(preview)
-	}
-
-}

@@ -284,6 +284,17 @@ type URLPreview struct {
 	Domain string
 	Image string
 }
+
+func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
+	if tmdbAPIKey != "" {
+		preview, handled, err := tmdbPreviewForIMDbTitle(inputURL, tmdbAPIKey)
+		if handled {
+			return preview, err
+		}
+	}
+	return URLPreview{}.New(inputURL)
+}
+
 func (URLPreview) New(input_url string) (URLPreview, error) {
 	urlpreview := URLPreview{}
 

@@ -791,6 +791,7 @@ func main() {
 	if !success {
 		panic("DOCTRAY_REDIRECTURL not an environment variable!")
 	}
+	tmdbAPIKey := os.Getenv("DOCTRAY_TMDB_API_KEY")
 	sessionAuthKey, success := os.LookupEnv("DOCTRAY_SESSION_AUTH_KEY")
 	if !success || len(sessionAuthKey) < 32 {
 		panic("DOCTRAY_SESSION_AUTH_KEY must contain at least 32 bytes!")
@@ -1050,7 +1051,7 @@ func main() {
 				}
 				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
 				for _, url_for_preview := range preview_urls {
-					preview_build, err := previewbuilder.URLPreview{}.New(url_for_preview)
+					preview_build, err := previewbuilder.BuildURLPreview(url_for_preview, tmdbAPIKey)
 					if err == nil {
 						docentry_new_webpreviews = append(docentry_new_webpreviews, preview_build)
 					}

@@ -8,6 +8,8 @@ services:
       - "DOCTRAY_CLIENTSECRET=2222222222222222222222222222222222222222222222222222222222222222222222222222222"
       - "DOCTRAY_ISSUERURL=https://auth.xyz.com/application/o/test-app/"
       - "DOCTRAY_REDIRECTURL=https://your-server.com/callback"
+      - "DOCTRAY_SESSION_AUTH_KEY=33333333333333333333333333333333333333333"
+      - "DOCTRAY_SESSION_ENCRYPTION_KEY=123--must-be-32-bytes--123456789"
     volumes:
       - type: bind
         source: /path/to/the/host/data/dir/

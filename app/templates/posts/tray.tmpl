@@ -21,12 +21,6 @@
 {{ define "posts/workspace-container.tmpl" }}
     <div id="workspace-container">
     {{ template "base/tags.tmpl" . }}
-	<script>
-	setInterval(() => {
-        htmx.ajax('POST', '/tray/ping', {values: {title:"ping sent"}, swap:'none'})
-        //htmx.ajax('GET', '/login', {swap:'none'})
-	}, 1 * 110 * 1000);
-	</script>
     {{ template "base/doc-list.tmpl" . }}
     </div>
 {{ end }}

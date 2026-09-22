@@ -2,17 +2,17 @@ package openidauth
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"time"
-
-	// "time"
-
-	"encoding/base64"
-	"encoding/json"
 
 	"github.com/gin-contrib/sessions"
 
@@ -35,49 +35,73 @@ func randString(nByte int) (string, error) {
 }
 
 
-type cookie_auth_content struct {
-	State string		`json:"state"`
-	Nonce string		`json:"nonce"`
-	Redirect_to string	`json:"redir"`
+const (
+	pendingAuthTransactionTTL  = 10 * time.Minute
+	maxPendingAuthTransactions = 128
+)
+
+type pendingAuthTransaction struct {
+	nonce          string
+	redirectTo     string
+	sessionBinding string
+	expiresAt      time.Time
 }
-func AuthFromJSON(cookie string) (cookie_auth_content, error) {
-	var c cookie_auth_content
-	err := json.Unmarshal([]byte(cookie),&c)
-	if err != nil {
-		fmt.Println("Error, can't unmarshall: ", err, "\n\n", cookie)
-		return c, err
+
+type pendingAuthTransactions struct {
+	mu           sync.Mutex
+	transactions map[string]pendingAuthTransaction
+}
+
+func newPendingAuthTransactions() *pendingAuthTransactions {
+	return &pendingAuthTransactions{transactions: make(map[string]pendingAuthTransaction)}
+}
+
+func (transactions *pendingAuthTransactions) add(state string, transaction pendingAuthTransaction) bool {
+	transactions.mu.Lock()
+	defer transactions.mu.Unlock()
+
+	now := time.Now()
+	for state, transaction := range transactions.transactions {
+		if !transaction.expiresAt.After(now) {
+			delete(transactions.transactions, state)
+		}
 	}
-	return c, nil
-}
-func (c cookie_auth_content) ToJSON() string {
-	new_cookie_json, err := json.Marshal(c)
-	if err != nil {
-		panic("can't marshall cookie")
+
+	if len(transactions.transactions) >= maxPendingAuthTransactions {
+		return false
 	}
-	return string(new_cookie_json)
+
+	transactions.transactions[state] = transaction
+	return true
 }
 
+func (transactions *pendingAuthTransactions) take(state string) (pendingAuthTransaction, bool) {
+	transactions.mu.Lock()
+	defer transactions.mu.Unlock()
 
+	transaction, ok := transactions.transactions[state]
+	if !ok || !transaction.expiresAt.After(time.Now()) {
+		delete(transactions.transactions, state)
+		return pendingAuthTransaction{}, false
+	}
 
+	delete(transactions.transactions, state)
+	return transaction, true
+}
 type AuthHandler struct {
 	context		*context.Context
 	provider	*oidc.Provider
 	verifier	*oidc.IDTokenVerifier
 	oauth2Conf  *oauth2.Config
 	expirationTimer	int64
-	session_label_nonce string
 	session_label_expired string
-	session_label_state string
-	session_label_redirect string
 	session_label_userid string
-	session_label_sessionid string
+	session_label_login_binding string
 	default_authenticated_url string
+	pending_auth_transactions *pendingAuthTransactions
 }
 func (a AuthHandler) UserIDLabel() string {
 	return a.session_label_userid
-}
-func (a AuthHandler) SessionIDLabel() string {
-	return a.session_label_sessionid
 }
 func NewAuthHandler(clientID string, clientSecret string, sessionExpiration int64, issuerUrl string, redirectURL string) AuthHandler{
 	context := context.Background()
@@ -105,55 +129,87 @@ func NewAuthHandler(clientID string, clientSecret string, sessionExpiration int6
 	}
 	return AuthHandler{provider: provider, verifier: verifier, oauth2Conf: &config, context: &context,
 		expirationTimer: sessionExpiration,
-		session_label_nonce: "auth_nonce", session_label_expired: "expiration",session_label_state: "auth_state",
-		session_label_redirect: "auth_redir", session_label_userid: "sub",
-		default_authenticated_url: "/", session_label_sessionid: "sessionid" }
+		session_label_expired: "expiration", session_label_userid: "sub", session_label_login_binding: "auth_login_binding",
+		default_authenticated_url: "/tray/", pending_auth_transactions: newPendingAuthTransactions() }
 }
 
 func (handler *AuthHandler) Login() gin.HandlerFunc {
-	return func (ctx *gin.Context) {
-		previousURL := ctx.Request.RequestURI // Current URL
-		if previousURL == "" {
-			previousURL = handler.default_authenticated_url
-		}
-
-		w := ctx.Writer
-		lstate, err := randString(16)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-		nonce, err := randString(16)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-
-		sessionid, err := randString(16)
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-			return
-		}
-
-		s := sessions.Default(ctx)
-		s.Set(handler.session_label_nonce, nonce)
-		s.Set(handler.session_label_state, lstate)
-		s.Set(handler.session_label_redirect, previousURL)
-		s.Set(handler.session_label_sessionid, sessionid)
-		err = s.Save()
-		if err != nil {
-			http.Error(w, "Internal error", http.StatusInternalServerError)
-		}
-
-		ctx.Redirect(http.StatusFound, handler.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
+	return func(ctx *gin.Context) {
+		handler.startLogin(ctx, handler.default_authenticated_url)
 	}
+}
+
+func (handler *AuthHandler) startLogin(ctx *gin.Context, redirectTo string) {
+	if !isLocalRedirect(redirectTo) {
+		redirectTo = handler.default_authenticated_url
+	}
+
+	w := ctx.Writer
+	lstate, err := randString(16)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		ctx.Abort()
+		return
+	}
+	nonce, err := randString(16)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		ctx.Abort()
+		return
+	}
+	session := sessions.Default(ctx)
+	loginBinding, ok := session.Get(handler.session_label_login_binding).(string)
+	if !ok || loginBinding == "" {
+		loginBinding, err = randString(16)
+		if err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			ctx.Abort()
+			return
+		}
+		session.Set(handler.session_label_login_binding, loginBinding)
+		if err := session.Save(); err != nil {
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			ctx.Abort()
+			return
+		}
+	}
+
+	if !handler.pending_auth_transactions.add(lstate, pendingAuthTransaction{
+		nonce:          nonce,
+		redirectTo:     redirectTo,
+		sessionBinding: loginBinding,
+		expiresAt:      time.Now().Add(pendingAuthTransactionTTL),
+	}) {
+		http.Error(w, "too many sign-in requests are in progress; try again shortly", http.StatusServiceUnavailable)
+		ctx.Abort()
+		return
+	}
+
+	ctx.Redirect(http.StatusFound, handler.oauth2Conf.AuthCodeURL(lstate, oidc.Nonce(nonce)))
+	ctx.Abort()
+}
+
+func isLocalRedirect(redirectTo string) bool {
+	parsedURL, err := url.Parse(redirectTo)
+	return err == nil &&
+		!parsedURL.IsAbs() &&
+		parsedURL.Host == "" &&
+		strings.HasPrefix(parsedURL.Path, "/") &&
+		!strings.HasPrefix(redirectTo, "//") &&
+		!strings.Contains(parsedURL.Path, "\\")
 }
 
 func (handler *AuthHandler) Logout() gin.HandlerFunc{
 	return func (ctx *gin.Context) {
 		s := sessions.Default(ctx)
 		s.Clear()
-		s.Options(sessions.Options{MaxAge: -1, Path: "/"}) // this sets the cookie as expired
+		s.Options(sessions.Options{
+			MaxAge:   -1,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+		})
 		err := s.Save()
 		if err != nil {
 			log.Fatal("Can't save(remove) cookie!")
@@ -206,10 +262,22 @@ func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
 	return func(ctx *gin.Context) {
 		if handler.IsLoggedIn(ctx) {
 			// fmt.Println("ENSURE_LOGGEDIN: Authorized!")
-		} else {
-			// fmt.Println("ENSURE_LOGGEDIN: Unauthorized")
-			handler.Login()(ctx)
+			return
 		}
+
+		if ctx.GetHeader("HX-Request") == "true" {
+			ctx.Header("HX-Redirect", "/login")
+			ctx.Status(http.StatusOK)
+			ctx.Abort()
+			return
+		}
+
+		// Do not redirect an expired POST back to its GET-only URL after login.
+		returnTo := handler.default_authenticated_url
+		if ctx.Request.Method == http.MethodGet || ctx.Request.Method == http.MethodHead {
+			returnTo = ctx.Request.URL.RequestURI()
+		}
+		handler.startLogin(ctx, returnTo)
 	}
 
 }
@@ -219,14 +287,20 @@ func (handler *AuthHandler) Callback_handler() func(ctx *gin.Context) {
 		httpRequest := ctx.Request
 		w := ctx.Writer
 
-		session := sessions.Default(ctx)
-		session_state := session.Get(handler.session_label_state)
-		if session_state == nil {
-			http.Error(w, "no state found", http.StatusBadRequest)
+		state := httpRequest.URL.Query().Get("state")
+		transaction, ok := handler.pending_auth_transactions.take(state)
+		if !ok {
+			http.Error(w, "sign-in request is missing or expired; return to the tray and try again", http.StatusBadRequest)
 			return
 		}
-		if httpRequest.URL.Query().Get("state") != session_state.(string) {
-			http.Error(w, "state did not match", http.StatusBadRequest)
+		session := sessions.Default(ctx)
+		loginBinding, ok := session.Get(handler.session_label_login_binding).(string)
+		if !ok || loginBinding != transaction.sessionBinding {
+			http.Error(w, "sign-in request does not belong to this browser; return to the tray and try again", http.StatusBadRequest)
+			return
+		}
+		if providerError := httpRequest.URL.Query().Get("error"); providerError != "" {
+			http.Error(w, "sign-in was not completed; return to the tray and try again", http.StatusBadRequest)
 			return
 		}
 
@@ -246,20 +320,12 @@ func (handler *AuthHandler) Callback_handler() func(ctx *gin.Context) {
 			return
 		}
 
-		session_nonce := session.Get(handler.session_label_nonce)
-		if session_nonce == nil {
-			http.Error(w, "no state found", http.StatusBadRequest)
-			return
-		}
-		if idToken.Nonce != session_nonce.(string) {
+		if idToken.Nonce != transaction.nonce {
 			http.Error(w, "nonce did not match", http.StatusBadRequest)
 			return
 		}
 
-		redirection_url := handler.default_authenticated_url
-		if redir := session.Get(handler.session_label_redirect); redir != nil {
-			redirection_url = redir.(string)
-		}
+		redirection_url := transaction.redirectTo
 		fmt.Println("Redirect to: ", redirection_url)
 
 		resp := struct {

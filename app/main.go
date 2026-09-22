@@ -39,14 +39,14 @@ import (
 //  otherwise they are escaped
 // TODO: this can be used in the future to add very limited markdown rendering
 // TODO: store text html escaped -> add custom html tags for [lists, bold, italic]
-// TODO: inline monospace like this '`mono` mehr text' only shows the monospace text
 // TODO: Define user information and think how to save it (Name,Email,Sub,etc.)
 // TODO: Create a welcome page
-// TODO: handle login constant redirect problem
 // TODO: refactor this page and only then continue with the acutal doctray functionality
 // TODO: doctray tags
 
 var DATA_BASE_PATH = ""
+
+const auth_session_duration = 8 * time.Hour
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
@@ -790,8 +790,16 @@ func main() {
 	if !success {
 		panic("DOCTRAY_REDIRECTURL not an environment variable!")
 	}
+	sessionAuthKey, success := os.LookupEnv("DOCTRAY_SESSION_AUTH_KEY")
+	if !success || len(sessionAuthKey) < 32 {
+		panic("DOCTRAY_SESSION_AUTH_KEY must contain at least 32 bytes!")
+	}
+	sessionEncryptionKey, success := os.LookupEnv("DOCTRAY_SESSION_ENCRYPTION_KEY")
+	if !success || (len(sessionEncryptionKey) != 16 && len(sessionEncryptionKey) != 24 && len(sessionEncryptionKey) != 32) {
+		panic("DOCTRAY_SESSION_ENCRYPTION_KEY must contain 16, 24, or 32 bytes!")
+	}
 
-	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(time.Minute.Seconds()*2), issuerUrl, redirectURL)
+	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(auth_session_duration.Seconds()), issuerUrl, redirectURL)
 
 	basepath, success := os.LookupEnv("DOCTRAY_TARGET_DIRECTORY")
 	if !success {
@@ -807,11 +815,13 @@ func main() {
 	router.Static("/resources", "./resources/")
 	router.LoadHTMLGlob("templates/**/*")
 
-	// Session Config (Basic cookies)
-	// store = cookie.NewStore(securecookie.GenerateRandomKey(32), securecookie.GenerateRandomKey(32))
-	// "github.com/gorilla/securecookie"
-	store := cookie.NewStore([]byte("secret"), nil) // TODO: <<<
-	// router.Use(sessions.Sessions("oidcauth-example", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
+	store := cookie.NewStore([]byte(sessionAuthKey), []byte(sessionEncryptionKey))
+	store.Options(sessions.Options{
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 	router.Use(sessions.Sessions("session", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
 	router.MaxMultipartMemory = 10 << 20 // max 10 MiB

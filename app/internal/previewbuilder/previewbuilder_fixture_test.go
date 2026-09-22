@@ -1,40 +1,69 @@
 package previewbuilder
 
-import "testing"
+import (
+	"net/url"
+	"os"
+	"testing"
+)
 
-// TestSavedPreviewFixtures is a deliberately disabled offline fixture suite.
-//
-// Save representative pages as testdata/<name>.html rather than fetching them
-// during tests. Once preview extraction is separated from network fetching,
-// this test should feed each fixture into that extraction function and compare
-// its title, description, and image with the expected values below.
+// TestSavedPreviewFixtures is an offline inspection test. Once expected output
+// is established, replace the log statements with assertions.
 func TestSavedPreviewFixtures(t *testing.T) {
-	t.Skip("add saved HTML fixtures and an extraction-only test seam")
+	fixtures := []struct {
+		name      string
+		filename  string
+		sourceURL string
+	}{
+		{
+			name:      "imdb-title",
+			filename:  "imdb.html",
+			sourceURL: "https://www.imdb.com/de/title/tt0107007/",
+		},
+		{
+			name:      "reddit-overlay-mod",
+			filename:  "reddit-overlay_mod.html",
+			sourceURL: "https://www.reddit.com/r/MonsterHunterWorld/comments/17xmkrf/overlay_mod",
+		},
+		{
+			name:      "youtube-watch",
+			filename:  "youtube-watch.html",
+			sourceURL: "https://www.youtube.com/watch?v=AZmql5nbTl0",
+		},
+	}
 
-	/*
-		fixtures := []struct {
-			name            string
-			sourceURL       string
-			wantTitle       string
-			wantDescription string
-			wantImage       string
-		}{
-			{
-				name:            "reddit-post",
-				sourceURL:       "https://www.reddit.com/r/example/comments/example/",
-				wantTitle:       "Expected title",
-				wantDescription: "Expected description",
-				wantImage:       "https://i.redd.it/example.jpg",
-			},
-		}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			body, err := os.ReadFile("testdata/" + fixture.filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pageURL, err := url.Parse(fixture.sourceURL)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		for _, fixture := range fixtures {
-			t.Run(fixture.name, func(t *testing.T) {
-				// Read testdata/<fixture.name>.html.
-				// Call an extraction-only helper with fixture.sourceURL and the HTML.
-				// Compare its fields with fixture.wantTitle, fixture.wantDescription,
-				// and fixture.wantImage.
-			})
-		}
-	*/
+			preview, err := extractPreview(body, pageURL)
+			if err != nil {
+				t.Logf("extraction error: %v", err)
+				return
+			}
+
+			imageSource := "readability"
+			fallbackRequired := preview.Image == ""
+			fallbackCandidates := []string(nil)
+			if fallbackRequired {
+				imageSource = "fallback required"
+				fallbackCandidates = fallbackImageURLs(string(body), pageURL)
+			}
+
+			t.Logf("title (readability): %q", preview.Title)
+			t.Logf("description (readability): %q", preview.Description)
+			t.Logf("image (%s): %q", imageSource, preview.Image)
+			t.Logf("favicon: %q", preview.Favicon)
+			t.Logf("fallback required: %t", fallbackRequired)
+			if fallbackRequired {
+				t.Logf("fallback candidates: %#v", fallbackCandidates)
+			}
+		})
+	}
 }

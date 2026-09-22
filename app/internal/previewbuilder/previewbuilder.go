@@ -28,7 +28,7 @@ import (
 
 const (
 	previewRequestTimeout       = 5 * time.Second
-	maxPreviewBodyBytes         = 500000
+	maxPreviewBodyBytes         = 1000 * 2000
 	maxImageConfigBytes         = 1024 * 1024
 	maxFallbackImageCandidates  = 32
 	fallbackImageTimeout        = 4 * time.Second
@@ -285,6 +285,32 @@ type URLPreview struct {
 	Image string
 }
 
+func extractPreview(body []byte, pageURL *url.URL) (URLPreview, error) {
+	article, err := readability.FromReader(bytes.NewReader(body), pageURL)
+	if err != nil {
+		return URLPreview{}, err
+	}
+
+	preview := URLPreview{
+		URL:         pageURL.String(),
+		Title:       StringCleanup(article.Title, 200),
+		Description: StringCleanup(article.Excerpt, 500),
+		Favicon:     resolvePreviewURL(pageURL, article.Favicon),
+		Domain:      pageURL.Hostname(),
+		Image:       resolvePreviewURL(pageURL, article.Image),
+	}
+
+	if preview.Domain == "www.reddit.com" {
+		redditTitleRegex := regexp.MustCompile(`<shreddit-title title="([^"]+)">`)
+		matches := redditTitleRegex.FindAllStringSubmatch(string(body), -1)
+		if len(matches) >= 1 && len(matches[0]) >= 2 && matches[0][1] != "" {
+			preview.Title = matches[0][1]
+		}
+	}
+
+	return preview, nil
+}
+
 func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
 	if tmdbAPIKey != "" {
 		preview, handled, err := tmdbPreviewForIMDbTitle(inputURL, tmdbAPIKey)
@@ -312,34 +338,15 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	if len(body) > maxPreviewBodyBytes {
 		body = body[:maxPreviewBodyBytes]
 	}
-	raw_html := string(body)
-
-	article, err := readability.FromReader(bytes.NewReader(body), url_parsed)
+	urlpreview, err = extractPreview(body, url_parsed)
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
-	urlpreview.URL = url_parsed.String()
-	urlpreview.Title = StringCleanup(article.Title, 200)
-	urlpreview.Description = StringCleanup(article.Excerpt, 500)
-	urlpreview.Favicon = resolvePreviewURL(url_parsed, article.Favicon)
-	urlpreview.Domain = url_parsed.Hostname()
-	urlpreview.Image = resolvePreviewURL(url_parsed, article.Image)
 	if urlpreview.Image == "" {
-		urlpreview.Image = findFallbackImage(raw_html, url_parsed)
+		urlpreview.Image = findFallbackImage(string(body), url_parsed)
 	}
 	if urlpreview.Image == "" {
 		urlpreview.Image = urlpreview.Favicon
-	}
-
-
-	// 3. Replace some titles
-	switch urlpreview.Domain {
-	case "www.reddit.com":
-		reddit_title_regex := regexp.MustCompile(`<shreddit-title title="([^"]+)">`)
-		returned_matches := reddit_title_regex.FindAllStringSubmatch(raw_html, -1)
-		if len(returned_matches) >= 1 && len(returned_matches[0]) >=2 && returned_matches[0][1] != "" {
-			urlpreview.Title = returned_matches[0][1]
-		}
 	}
 
 	return urlpreview, nil

@@ -14,16 +14,25 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"net/http"
 	"net/netip"
 	"net/url"
 
 	readability "github.com/go-shiori/go-readability"
+	htmlparser "golang.org/x/net/html"
 )
 
 const (
-	previewRequestTimeout = 5 * time.Second
-	maxPreviewBodyBytes  = 500000
+	previewRequestTimeout       = 5 * time.Second
+	maxPreviewBodyBytes         = 500000
+	maxImageConfigBytes         = 1024 * 1024
+	maxFallbackImageCandidates  = 32
+	fallbackImageTimeout        = 4 * time.Second
+	maxFallbackImageAspectRatio = 4.0
 )
 
 var nonPublicPrefixes = []netip.Prefix{
@@ -120,7 +129,7 @@ func dialPublicContext(ctx context.Context, network, address string) (net.Conn, 
 	return nil, fmt.Errorf("URL host %q has no public address", host)
 }
 
-func fetchPublicURL(method, rawURL string) (*http.Response, *url.URL, error) {
+func fetchPublicURL(ctx context.Context, method, rawURL string) (*http.Response, *url.URL, error) {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, nil, err
@@ -129,7 +138,7 @@ func fetchPublicURL(method, rawURL string) (*http.Response, *url.URL, error) {
 		return nil, nil, err
 	}
 
-	request, err := http.NewRequest(method, parsedURL.String(), nil)
+	request, err := http.NewRequestWithContext(ctx, method, parsedURL.String(), nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -162,6 +171,81 @@ func resolvePreviewURL(baseURL *url.URL, rawURL string) string {
 		return ""
 	}
 	return resolvedURL.String()
+}
+
+func fallbackImageURLs(rawHTML string, baseURL *url.URL) []string {
+	document, err := htmlparser.Parse(strings.NewReader(rawHTML))
+	if err != nil {
+		return nil
+	}
+
+	imageURLs := make([]string, 0, maxFallbackImageCandidates)
+	seenURLs := make(map[string]bool)
+	var visit func(*htmlparser.Node)
+	visit = func(node *htmlparser.Node) {
+		if len(imageURLs) >= maxFallbackImageCandidates {
+			return
+		}
+		if node.Type == htmlparser.ElementNode && strings.EqualFold(node.Data, "img") {
+			for _, attribute := range node.Attr {
+				if !strings.EqualFold(attribute.Key, "src") {
+					continue
+				}
+				imageURL := resolvePreviewURL(baseURL, attribute.Val)
+				if imageURL != "" && !seenURLs[imageURL] {
+					seenURLs[imageURL] = true
+					imageURLs = append(imageURLs, imageURL)
+				}
+				break
+			}
+		}
+		for child := node.FirstChild; child != nil && len(imageURLs) < maxFallbackImageCandidates; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(document)
+	return imageURLs
+}
+
+func isSuitableFallbackImage(width, height int) bool {
+	if width <= 0 || height <= 0 {
+		return false
+	}
+	aspectRatio := float64(width) / float64(height)
+	return aspectRatio <= maxFallbackImageAspectRatio && aspectRatio >= 1/maxFallbackImageAspectRatio
+}
+
+func getImageSize(ctx context.Context, imageURL string) (int, int, error) {
+	response, _, err := fetchPublicURL(ctx, http.MethodGet, imageURL)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer response.Body.Close()
+
+	config, _, err := image.DecodeConfig(io.LimitReader(response.Body, maxImageConfigBytes))
+	if err != nil {
+		return 0, 0, err
+	}
+	return config.Width, config.Height, nil
+}
+
+func findFallbackImage(rawHTML string, baseURL *url.URL) string {
+	ctx, cancel := context.WithTimeout(context.Background(), fallbackImageTimeout)
+	defer cancel()
+
+	bestImageURL := ""
+	bestPixels := int64(0)
+	for _, imageURL := range fallbackImageURLs(rawHTML, baseURL) {
+		width, height, err := getImageSize(ctx, imageURL)
+		if err != nil || !isSuitableFallbackImage(width, height) {
+			continue
+		}
+		if pixels := int64(width) * int64(height); pixels > bestPixels {
+			bestImageURL = imageURL
+			bestPixels = pixels
+		}
+	}
+	return bestImageURL
 }
 
 func StringCleanup(s string, maxlength int) string {
@@ -204,7 +288,7 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	urlpreview := URLPreview{}
 
 	// 1. Get bases
-	resp, url_parsed, err := fetchPublicURL(http.MethodGet, input_url)
+	resp, url_parsed, err := fetchPublicURL(context.Background(), http.MethodGet, input_url)
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
@@ -229,6 +313,12 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	urlpreview.Favicon = resolvePreviewURL(url_parsed, article.Favicon)
 	urlpreview.Domain = url_parsed.Hostname()
 	urlpreview.Image = resolvePreviewURL(url_parsed, article.Image)
+	if urlpreview.Image == "" {
+		urlpreview.Image = findFallbackImage(raw_html, url_parsed)
+	}
+	if urlpreview.Image == "" {
+		urlpreview.Image = urlpreview.Favicon
+	}
 
 
 	// 3. Replace some titles
@@ -254,4 +344,3 @@ func (up URLPreview) String() string {
 	sb.WriteString(fmt.Sprintf("Image       : %s\n", up.Image))
 	return sb.String()
 }
-

@@ -49,3 +49,30 @@ func TestResolvePreviewURL(t *testing.T) {
 		}
 	}
 }
+
+func TestFallbackImageURLs(t *testing.T) {
+	baseURL, err := url.Parse("https://example.com/articles/one")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	imageURLs := fallbackImageURLs(`
+		<img src="/images/one.jpg">
+		<img src="//cdn.example.com/two.jpg">
+		<img src="/images/one.jpg">
+		<img src="http://127.0.0.1/private.jpg">
+	`, baseURL)
+	want := []string{
+		"https://example.com/images/one.jpg",
+		"https://cdn.example.com/two.jpg",
+	}
+
+	if len(imageURLs) != len(want) {
+		t.Fatalf("got %d image URLs, want %d", len(imageURLs), len(want))
+	}
+	for i := range want {
+		if imageURLs[i] != want[i] {
+			t.Errorf("imageURLs[%d] = %q, want %q", i, imageURLs[i], want[i])
+		}
+	}
+}

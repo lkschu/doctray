@@ -14,10 +14,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -28,7 +24,6 @@ import (
 const (
 	previewRequestTimeout = 5 * time.Second
 	maxPreviewBodyBytes  = 500000
-	maxImageConfigBytes  = 1024 * 1024
 )
 
 var nonPublicPrefixes = []netip.Prefix{
@@ -154,6 +149,21 @@ func fetchPublicURL(method, rawURL string) (*http.Response, *url.URL, error) {
 	return response, response.Request.URL, nil
 }
 
+func resolvePreviewURL(baseURL *url.URL, rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	resolvedURL := baseURL.ResolveReference(parsedURL)
+	if err := validatePublicURL(resolvedURL); err != nil {
+		return ""
+	}
+	return resolvedURL.String()
+}
+
 func StringCleanup(s string, maxlength int) string {
 	bytes := []byte(s)
 	out_len := len(bytes)
@@ -216,44 +226,9 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	urlpreview.URL = url_parsed.String()
 	urlpreview.Title = StringCleanup(article.Title, 200)
 	urlpreview.Description = StringCleanup(article.Excerpt, 500)
-	urlpreview.Favicon = article.Favicon
+	urlpreview.Favicon = resolvePreviewURL(url_parsed, article.Favicon)
 	urlpreview.Domain = url_parsed.Hostname()
-
-	urlpreview.Image = article.Image
-
-
-	// 2. Find alternative images
-	if urlpreview.Image == "" {
-		extracted_image_urls := getImagesInRawHTML(raw_html)
-		// fmt.Println(extracted_image_urls)
-		extracted_image_sizes := make(map[string][]int)
-		// fmt.Println(extracted_image_sizes)
-		max_size := 1
-		max_index := -1
-		for i,u := range extracted_image_urls {
-			x,y,err := getImageSize(u)
-			if err != nil {
-				xy := []int{0,0}
-				extracted_image_sizes[u] = xy
-			} else if xy_ratio := float64(x)/float64(y); xy_ratio > 8 || xy_ratio < 1.0/8.0 {
-				xy := []int{0,0}
-				extracted_image_sizes[u] = xy
-			} else {
-				extracted_image_sizes[u] = []int{x,y}
-			}
-			if pixels := extracted_image_sizes[u][0] * extracted_image_sizes[u][1]; pixels > max_size {
-				max_size = pixels
-				max_index = i
-			}
-		}
-
-		if max_index >= 0 {
-			urlpreview.Image = extracted_image_urls[max_index]
-		}
-	}
-	if urlpreview.Image == "" && urlpreview.Favicon != "" || urlpreview.Image != "" && !checkIfOnline(urlpreview.Image) {
-		urlpreview.Image = urlpreview.Favicon
-	}
+	urlpreview.Image = resolvePreviewURL(url_parsed, article.Image)
 
 
 	// 3. Replace some titles
@@ -278,59 +253,5 @@ func (up URLPreview) String() string {
 	sb.WriteString(fmt.Sprintf("Favicon     : %s\n", up.Favicon))
 	sb.WriteString(fmt.Sprintf("Image       : %s\n", up.Image))
 	return sb.String()
-}
-
-func checkIfOnline(url string) bool {
-	resp, _, err := fetchPublicURL(http.MethodHead, url)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
-}
-
-func removeDuplicateStr(str_slice []string) []string {
-	all_keys := make(map[string]bool)
-	list := []string{}
-	for _, item := range str_slice {
-		if _, value := all_keys[item]; !value {
-			all_keys[item] = true
-			list = append(list, item)
-		}
-	}
-	return list
-}
-
-func getImagesInRawHTML(html string) []string {
-	// TODO: drop dublicates
-	var image_regexp = regexp.MustCompile(`<img[^>]*src="([^"]+)"[^>]*>`)
-	returns := make([]string, 0)
-
-	matches := image_regexp.FindAllStringSubmatch(html, -1)
-	for _,m := range matches {
-		// the length indicates the number of capture group matches: #0=actual match #1...= capture groups
-		if len(m) == 2 {
-			returns = append(returns, m[1])
-		}
-	}
-
-	return removeDuplicateStr(returns)
-}
-
-
-func getImageSize(url string) (int, int, error) {
-	resp, _, err := fetchPublicURL(http.MethodGet, url)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	defer resp.Body.Close()
-
-	// DecodeConfig only reads enough to determine format + dimensions
-	cfg, _, err := image.DecodeConfig(io.LimitReader(resp.Body, maxImageConfigBytes))
-	if err != nil {
-		return 0, 0, err
-	}
-	return cfg.Width, cfg.Height, nil
 }
 

@@ -69,6 +69,15 @@ var previewHTTPClient = &http.Client{
 	},
 }
 
+type previewHTTPStatusError struct {
+	status string
+	url    *url.URL
+}
+
+func (err *previewHTTPStatusError) Error() string {
+	return fmt.Sprintf("unexpected HTTP status %s", err.status)
+}
+
 func isPublicIP(ip net.IP) bool {
 	address, ok := netip.AddrFromSlice(ip)
 	if !ok {
@@ -145,13 +154,14 @@ func fetchPublicURL(ctx context.Context, method, rawURL string) (*http.Response,
 	if err != nil {
 		return nil, nil, err
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		response.Body.Close()
-		return nil, nil, fmt.Errorf("unexpected HTTP status %s", response.Status)
-	}
 	if response.Request == nil || response.Request.URL == nil {
 		response.Body.Close()
 		return nil, nil, errors.New("response has no final URL")
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		finalURL := response.Request.URL
+		response.Body.Close()
+		return nil, nil, &previewHTTPStatusError{status: response.Status, url: finalURL}
 	}
 
 	return response, response.Request.URL, nil
@@ -291,6 +301,38 @@ type previewExtraction struct {
 	ImageSource       string
 }
 
+func hostFallbackPreview(pageURL *url.URL) URLPreview {
+	faviconURL := *pageURL
+	faviconURL.User = nil
+	faviconURL.Path = "/favicon.ico"
+	faviconURL.RawPath = ""
+	faviconURL.RawQuery = ""
+	faviconURL.ForceQuery = false
+	faviconURL.Fragment = ""
+
+	favicon := faviconURL.String()
+	return URLPreview{
+		URL:     pageURL.String(),
+		Title:   pageURL.Hostname(),
+		Favicon: favicon,
+		Domain:  pageURL.Hostname(),
+		Image:   favicon,
+	}
+}
+
+func isChallengePreview(preview URLPreview, body []byte) bool {
+	switch strings.ToLower(strings.TrimSpace(preview.Title)) {
+	case "just a moment...", "just a moment…", "attention required!", "access denied", "pardon our interruption":
+		return true
+	}
+
+	rawHTML := strings.ToLower(string(body))
+	if strings.Contains(rawHTML, "challenges.cloudflare.com") || strings.Contains(rawHTML, "cf-chl-") {
+		return true
+	}
+	return strings.EqualFold(preview.Title, "reddit") && strings.Contains(rawHTML, "js_challenge")
+}
+
 func extractPreview(body []byte, pageURL *url.URL) (previewExtraction, error) {
 	article, err := readability.FromReader(bytes.NewReader(body), pageURL)
 	if err != nil {
@@ -338,6 +380,10 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	// 1. Get bases
 	resp, url_parsed, err := fetchPublicURL(context.Background(), http.MethodGet, input_url)
 	if err != nil {
+		var statusErr *previewHTTPStatusError
+		if errors.As(err, &statusErr) {
+			return hostFallbackPreview(statusErr.url), nil
+		}
 		return urlpreview, errors.New("Parse failure")
 	}
 	defer resp.Body.Close()
@@ -354,6 +400,9 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 		return urlpreview, errors.New("Parse failure")
 	}
 	urlpreview = extraction.Preview
+	if isChallengePreview(urlpreview, body) {
+		return hostFallbackPreview(url_parsed), nil
+	}
 	if urlpreview.Image == "" {
 		urlpreview.Image = findFallbackImage(string(body), url_parsed)
 	}

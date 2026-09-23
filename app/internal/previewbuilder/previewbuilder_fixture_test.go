@@ -8,19 +8,22 @@ import (
 )
 
 // TestSavedPreviewFixtures runs saved source-handler responses or generic page
-// extraction and enrichers. It reports the final offline preview; image
-// fallback remains diagnostic because selecting an image requires network I/O.
+// extraction and enrichers. Set DOCTRAY_TMDB_LIVE_TEST=1 to use the configured
+// TMDb key for the IMDb fixture. Image fallback remains diagnostic because
+// selecting an image requires network I/O.
 func TestSavedPreviewFixtures(t *testing.T) {
 	fixtures := []struct {
 		name      string
 		filename  string
 		sourceURL string
 		oEmbed    string
+		liveTMDb  bool
 	}{
 		{
 			name:      "imdb-title",
 			filename:  "imdb.html",
 			sourceURL: "https://www.imdb.com/de/title/tt0107007/",
+			liveTMDb:  true,
 		},
 		{
 			name:      "reddit-overlay-mod",
@@ -39,6 +42,8 @@ func TestSavedPreviewFixtures(t *testing.T) {
 			sourceURL: "https://www.youtube.com/shorts/QGcIMmgB6_8",
 		},
 	}
+	liveTMDb := os.Getenv("DOCTRAY_TMDB_LIVE_TEST") == "1"
+	tmdbAPIKey := os.Getenv("DOCTRAY_TMDB_API_KEY")
 
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
@@ -52,7 +57,28 @@ func TestSavedPreviewFixtures(t *testing.T) {
 			}
 
 			extraction := previewExtraction{}
-			if fixture.oEmbed != "" {
+			if fixture.liveTMDb && liveTMDb {
+				if tmdbAPIKey == "" {
+					t.Fatal("DOCTRAY_TMDB_API_KEY is required when DOCTRAY_TMDB_LIVE_TEST=1")
+				}
+				preview, handled, err := tmdbPreviewForIMDbTitle(fixture.sourceURL, tmdbAPIKey)
+				if err != nil {
+					t.Fatalf("TMDb lookup failed: %v", err)
+				}
+				if !handled {
+					t.Fatal("TMDb lookup returned no result")
+				}
+				if preview.Title == "" {
+					t.Fatal("TMDb lookup returned an empty title")
+				}
+				extraction = previewExtraction{
+					Preview:           preview,
+					TitleSource:       "TMDb",
+					DescriptionSource: "TMDb",
+					ImageSource:       "TMDb",
+				}
+				t.Log("TMDb lookup succeeded")
+			} else if fixture.oEmbed != "" {
 				oEmbed, err := os.ReadFile("testdata/" + fixture.oEmbed)
 				if err != nil {
 					t.Fatal(err)

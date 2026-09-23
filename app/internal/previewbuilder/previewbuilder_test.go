@@ -76,3 +76,41 @@ func TestFallbackImageURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestHostFallbackPreview(t *testing.T) {
+	pageURL, err := url.Parse("https://www.example.com/articles/one?source=doctray#section")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preview := hostFallbackPreview(pageURL)
+	if got, want := preview.Title, "www.example.com"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	if got, want := preview.Image, "https://www.example.com/favicon.ico"; got != want {
+		t.Errorf("image = %q, want %q", got, want)
+	}
+	if preview.Image != preview.Favicon {
+		t.Errorf("image = %q, favicon = %q, want matching values", preview.Image, preview.Favicon)
+	}
+}
+
+func TestIsChallengePreview(t *testing.T) {
+	tests := []struct {
+		name    string
+		preview URLPreview
+		body    string
+		want    bool
+	}{
+		{name: "cloudflare title", preview: URLPreview{Title: "Just a moment..."}, want: true},
+		{name: "cloudflare marker", preview: URLPreview{Title: "Example"}, body: `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script>`, want: true},
+		{name: "reddit challenge", preview: URLPreview{Title: "Reddit"}, body: `<input name="js_challenge">`, want: true},
+		{name: "ordinary page", preview: URLPreview{Title: "Example"}, body: `<title>Example</title>`, want: false},
+	}
+
+	for _, test := range tests {
+		if got := isChallengePreview(test.preview, []byte(test.body)); got != test.want {
+			t.Errorf("%s: isChallengePreview() = %t, want %t", test.name, got, test.want)
+		}
+	}
+}

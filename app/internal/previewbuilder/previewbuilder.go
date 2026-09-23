@@ -320,6 +320,9 @@ func extractPreview(body []byte, pageURL *url.URL) (previewExtraction, error) {
 }
 
 func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
+	if preview, handled := redditOEmbedPreview(inputURL); handled {
+		return preview, nil
+	}
 	if tmdbAPIKey != "" {
 		preview, handled, err := tmdbPreviewForIMDbTitle(inputURL, tmdbAPIKey)
 		if handled {

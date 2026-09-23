@@ -1,18 +1,21 @@
 package previewbuilder
 
 import (
+	"bytes"
 	"net/url"
 	"os"
 	"testing"
 )
 
-// TestSavedPreviewFixtures is an offline inspection test. Once expected output
-// is established, replace the log statements with assertions.
+// TestSavedPreviewFixtures runs saved source-handler responses or generic page
+// extraction and enrichers. It reports the final offline preview; image
+// fallback remains diagnostic because selecting an image requires network I/O.
 func TestSavedPreviewFixtures(t *testing.T) {
 	fixtures := []struct {
 		name      string
 		filename  string
 		sourceURL string
+		oEmbed    string
 	}{
 		{
 			name:      "imdb-title",
@@ -23,11 +26,17 @@ func TestSavedPreviewFixtures(t *testing.T) {
 			name:      "reddit-overlay-mod",
 			filename:  "reddit-overlay_mod.html",
 			sourceURL: "https://www.reddit.com/r/MonsterHunterWorld/comments/17xmkrf/overlay_mod",
+			oEmbed:    "reddit-overlay_mod.oembed.json",
 		},
 		{
 			name:      "youtube-watch",
 			filename:  "youtube-watch.html",
 			sourceURL: "https://www.youtube.com/watch?v=AZmql5nbTl0",
+		},
+		{
+			name:      "youtube-shorts",
+			filename:  "youtube-shorts.html",
+			sourceURL: "https://www.youtube.com/shorts/QGcIMmgB6_8",
 		},
 	}
 
@@ -42,10 +51,28 @@ func TestSavedPreviewFixtures(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			extraction, err := extractPreview(body, pageURL)
-			if err != nil {
-				t.Logf("extraction error: %v", err)
-				return
+			extraction := previewExtraction{}
+			if fixture.oEmbed != "" {
+				oEmbed, err := os.ReadFile("testdata/" + fixture.oEmbed)
+				if err != nil {
+					t.Fatal(err)
+				}
+				preview, handled := redditOEmbedPreviewFromReader(pageURL, bytes.NewReader(oEmbed))
+				if !handled {
+					t.Fatal("saved oEmbed response did not produce a preview")
+				}
+				extraction = previewExtraction{
+					Preview:           preview,
+					TitleSource:       "reddit oEmbed",
+					DescriptionSource: "reddit URL",
+					ImageSource:       "reddit oEmbed favicon",
+				}
+			} else {
+				extraction, err = extractPreview(body, pageURL)
+				if err != nil {
+					t.Logf("extraction error: %v", err)
+					return
+				}
 			}
 
 			imageSource := extraction.ImageSource

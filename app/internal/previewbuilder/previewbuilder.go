@@ -32,6 +32,7 @@ const (
 	maxFallbackImageCandidates  = 32
 	fallbackImageTimeout        = 4 * time.Second
 	maxFallbackImageAspectRatio = 4.0
+	previewPlaceholderImage     = "/resources/preview-placeholder.svg"
 )
 
 var nonPublicPrefixes = []netip.Prefix{
@@ -286,12 +287,13 @@ func StringCleanup(s string, maxlength int) string {
 }
 
 type URLPreview struct {
-	URL string
-	Title string
-	Description string
-	Favicon string
-	Domain string
-	Image string
+	URL           string
+	Title         string
+	Description   string
+	Favicon       string
+	Domain        string
+	Image         string
+	ImageFallback string
 }
 
 type previewExtraction struct {
@@ -311,13 +313,35 @@ func hostFallbackPreview(pageURL *url.URL) URLPreview {
 	faviconURL.Fragment = ""
 
 	favicon := faviconURL.String()
+	faviconURL.Path = "/favicon"
 	return URLPreview{
-		URL:     pageURL.String(),
-		Title:   pageURL.Hostname(),
-		Favicon: favicon,
-		Domain:  pageURL.Hostname(),
-		Image:   favicon,
+		URL:           pageURL.String(),
+		Title:         pageURL.Hostname(),
+		Favicon:       favicon,
+		Domain:        pageURL.Hostname(),
+		Image:         favicon,
+		ImageFallback: faviconURL.String(),
 	}
+}
+
+func urlFallbackPreview(rawURL string) (URLPreview, error) {
+	pageURL, err := url.Parse(rawURL)
+	if err != nil {
+		return URLPreview{}, err
+	}
+	if pageURL.Scheme != "http" && pageURL.Scheme != "https" {
+		return URLPreview{}, errors.New("URL must use HTTP or HTTPS")
+	}
+	if pageURL.Hostname() == "" {
+		return URLPreview{}, errors.New("URL has no host")
+	}
+
+	return URLPreview{
+		URL:    pageURL.String(),
+		Title:  pageURL.Hostname(),
+		Domain: pageURL.Hostname(),
+		Image:  previewPlaceholderImage,
+	}, nil
 }
 
 func isChallengePreview(preview URLPreview, body []byte) bool {
@@ -368,10 +392,18 @@ func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
 	if tmdbAPIKey != "" {
 		preview, handled, err := tmdbPreviewForIMDbTitle(inputURL, tmdbAPIKey)
 		if handled {
-			return preview, err
+			if err == nil {
+				return preview, nil
+			}
+			return urlFallbackPreview(inputURL)
 		}
 	}
-	return URLPreview{}.New(inputURL)
+
+	preview, err := URLPreview{}.New(inputURL)
+	if err == nil {
+		return preview, nil
+	}
+	return urlFallbackPreview(inputURL)
 }
 
 func (URLPreview) New(input_url string) (URLPreview, error) {
@@ -390,17 +422,20 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPreviewBodyBytes+1))
 	if err != nil {
-		return urlpreview, errors.New("Parse failure")
+		return hostFallbackPreview(url_parsed), nil
 	}
 	if len(body) > maxPreviewBodyBytes {
 		body = body[:maxPreviewBodyBytes]
 	}
 	extraction, err := extractPreview(body, url_parsed)
 	if err != nil {
-		return urlpreview, errors.New("Parse failure")
+		return hostFallbackPreview(url_parsed), nil
 	}
 	urlpreview = extraction.Preview
 	if isChallengePreview(urlpreview, body) {
+		return hostFallbackPreview(url_parsed), nil
+	}
+	if urlpreview.Title == "" {
 		return hostFallbackPreview(url_parsed), nil
 	}
 	if urlpreview.Image == "" {

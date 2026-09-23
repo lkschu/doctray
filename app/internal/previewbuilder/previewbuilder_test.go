@@ -90,8 +90,33 @@ func TestHostFallbackPreview(t *testing.T) {
 	if got, want := preview.Image, "https://www.example.com/favicon.ico"; got != want {
 		t.Errorf("image = %q, want %q", got, want)
 	}
+	if got, want := preview.ImageFallback, "https://www.example.com/favicon"; got != want {
+		t.Errorf("image fallback = %q, want %q", got, want)
+	}
 	if preview.Image != preview.Favicon {
 		t.Errorf("image = %q, favicon = %q, want matching values", preview.Image, preview.Favicon)
+	}
+}
+
+func TestURLFallbackPreview(t *testing.T) {
+	preview, err := urlFallbackPreview("https://www.example.com/articles/one?source=doctray")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := preview.Title, "www.example.com"; got != want {
+		t.Errorf("title = %q, want %q", got, want)
+	}
+	if got, want := preview.Image, previewPlaceholderImage; got != want {
+		t.Errorf("image = %q, want %q", got, want)
+	}
+	if preview.ImageFallback != "" {
+		t.Errorf("image fallback = %q, want empty", preview.ImageFallback)
+	}
+}
+
+func TestURLFallbackPreviewRejectsInvalidURL(t *testing.T) {
+	if _, err := urlFallbackPreview("mailto:user@example.com"); err == nil {
+		t.Fatal("urlFallbackPreview accepted a non-HTTP URL")
 	}
 }
 

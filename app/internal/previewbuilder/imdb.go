@@ -48,7 +48,7 @@ func (title tmdbTitle) displayTitle() string {
 	return title.Name
 }
 
-func tmdbPreviewForIMDbTitle(inputURL, apiKey string) (URLPreview, bool, error) {
+func tmdbPreviewForIMDbTitle(ctx context.Context, inputURL, apiKey string) (URLPreview, bool, error) {
 	imdbID, isIMDbTitle := imdbTitleID(inputURL)
 	if !isIMDbTitle {
 		return URLPreview{}, false, nil
@@ -64,7 +64,7 @@ func tmdbPreviewForIMDbTitle(inputURL, apiKey string) (URLPreview, bool, error) 
 	query.Set("external_source", "imdb_id")
 	endpoint.RawQuery = query.Encode()
 
-	response, _, err := fetchPublicURL(context.Background(), "GET", endpoint.String())
+	response, _, err := fetchPublicURL(ctx, "GET", endpoint.String())
 	if err != nil {
 		return URLPreview{}, true, err
 	}

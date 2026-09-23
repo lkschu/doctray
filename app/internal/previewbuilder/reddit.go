@@ -47,7 +47,7 @@ func redditSubreddit(postURL *url.URL) string {
 	return ""
 }
 
-func redditOEmbedPreview(inputURL string) (URLPreview, bool) {
+func redditOEmbedPreview(ctx context.Context, inputURL string) (URLPreview, bool) {
 	postURL, isRedditPost := redditPostURL(inputURL)
 	if !isRedditPost {
 		return URLPreview{}, false
@@ -62,7 +62,7 @@ func redditOEmbedPreview(inputURL string) (URLPreview, bool) {
 	query.Set("url", postURL.String())
 	endpoint.RawQuery = query.Encode()
 
-	response, _, err := fetchPublicURL(context.Background(), "GET", endpoint.String())
+	response, _, err := fetchPublicURL(ctx, "GET", endpoint.String())
 	if err != nil {
 		return URLPreview{}, false
 	}

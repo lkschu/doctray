@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"log/slog"
 	"math/rand"
 	"mime/multipart"
 	"net/http"
@@ -28,6 +29,7 @@ import (
 
 	"main/internal/openidauth"
 	"main/internal/previewbuilder"
+	"main/internal/requestlog"
 	"main/internal/urlutil"
 
 	"github.com/gin-contrib/sessions"
@@ -48,6 +50,16 @@ var DATA_BASE_PATH = ""
 
 const auth_session_duration = 8 * time.Hour
 const maxPreviewsPerMessage = 3
+
+func configureLogger() *slog.Logger {
+	level := new(slog.LevelVar)
+	if rawLevel := os.Getenv("DOCTRAY_LOG_LEVEL"); rawLevel != "" {
+		if err := level.UnmarshalText([]byte(rawLevel)); err != nil {
+			panic(fmt.Sprintf("DOCTRAY_LOG_LEVEL must be a slog level: %v", err))
+		}
+	}
+	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
+}
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
@@ -430,7 +442,7 @@ type docentry_file struct {
 func (d docentry_file) String() string {
 	b, err := json.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("JSON marshal failed", "event", "persistence.marshal_failed", "type", "docentry_file", "error", err)
 		panic(err)
 	}
 	return string(b)
@@ -465,7 +477,7 @@ func (t tag) String() string {
 func (t tag) StringShort() string {
 	b, err := json.Marshal(t)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("JSON marshal failed", "event", "persistence.marshal_failed", "type", "tag", "error", err)
 		panic(err)
 	}
 	return string(b)
@@ -506,7 +518,7 @@ func (p *profile_data) find_post_idx_by_id(id int) int {
 func (p *profile_data) String() string {
 	b, err := json.Marshal(p)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("JSON marshal failed", "event", "persistence.marshal_failed", "type", "profile", "error", err)
 		panic(err)
 	}
 	return string(b)
@@ -535,7 +547,7 @@ type post struct {
 func (t post) String() string {
 	b, err := json.Marshal(t)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("JSON marshal failed", "event", "persistence.marshal_failed", "type", "post", "error", err)
 		panic(err)
 	}
 	return string(b)
@@ -589,7 +601,7 @@ type doc struct {
 func (d doc) String() string {
 	b, err := json.Marshal(d)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("JSON marshal failed", "event", "persistence.marshal_failed", "type", "doc", "error", err)
 		panic(err)
 	}
 	return string(b)
@@ -689,14 +701,14 @@ func get_data(sub string) profile_data {
 		if _, ok := profile_data.Tag_map[t.ID]; ok {
 			// key is known, duplicate!
 			drop_tags_by_idx = append(drop_tags_by_idx, i)
-			fmt.Printf("Duplicate for UUID: '%s'; dropping!\n", t.ID)
+			continue
 		} else {
 			profile_data.Tag_map[t.ID] = &profile_data.Tags[i]
 		}
 	}
 
 	if x := len(drop_tags_by_idx); x > 0 {
-		fmt.Printf("Dropping <%d> tags!\n", x)
+		slog.Warn("duplicate profile tags removed", "event", "persistence.tags_removed", "count", x)
 		for i := len(drop_tags_by_idx) - 1; i > 0; i-- {
 			profile_data.Tags = append(profile_data.Tags[:i], profile_data.Tags[i+1:]...)
 		}
@@ -775,6 +787,9 @@ func get_uuid(c *gin.Context) string {
 }
 
 func main() {
+	logger := configureLogger()
+	slog.SetDefault(logger)
+
 	clientID, success := os.LookupEnv("DOCTRAY_CLIENTID")
 	if !success {
 		panic("DOCTRAY_CLIENTID not an environment variable!")
@@ -801,7 +816,7 @@ func main() {
 		panic("DOCTRAY_SESSION_ENCRYPTION_KEY must contain 16, 24, or 32 bytes!")
 	}
 
-	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(auth_session_duration.Seconds()), issuerUrl, redirectURL)
+	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(auth_session_duration.Seconds()), issuerUrl, redirectURL, logger)
 
 	basepath, success := os.LookupEnv("DOCTRAY_TARGET_DIRECTORY")
 	if !success {
@@ -812,7 +827,12 @@ func main() {
 	}
 	DATA_BASE_PATH = basepath
 
-	router := gin.Default()
+	router := gin.New()
+	router.Use(requestlog.Middleware(logger))
+	router.Use(gin.CustomRecovery(func(c *gin.Context, recovered any) {
+		requestlog.FromGin(c).Error("request panicked", "event", "http.panic", "panic_type", fmt.Sprintf("%T", recovered))
+		c.AbortWithStatus(http.StatusInternalServerError)
+	}))
 	router.StaticFile("/favicon.ico", "./resources/favicon.ico")
 	router.Static("/resources", "./resources/")
 	router.LoadHTMLGlob("templates/**/*")
@@ -840,7 +860,6 @@ func main() {
 		if n != nil {
 			name = n.(string)
 		}
-		println(name)
 		// session.Save() // if it has been changed, which it has not
 
 		c.HTML(http.StatusOK, "posts/hello.tmpl", name)
@@ -851,9 +870,7 @@ func main() {
 		router_media.GET("/:item", func(c *gin.Context) {
 			item := c.Param("item")
 			sub := get_uuid(c)
-			fmt.Println("Item: ", item)
 			fullName := DATA_BASE_PATH + "/uploads/" + sub + "/" + item
-			fmt.Println("Fullpath: ", fullName)
 			c.File(fullName)
 		})
 	}
@@ -894,7 +911,6 @@ func main() {
 					ret_tags = append(ret_tags, new_tag)
 				}
 			}
-			fmt.Printf("Extracted %d tags from multiform\n", len((ret_tags)))
 			return ret_tags
 		}
 
@@ -903,7 +919,6 @@ func main() {
 			if id_str == "" {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
 			}
-			fmt.Printf("Got ID: %s\n", id_str)
 			post_id, err := strconv.Atoi(id_str)
 			if err != nil {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
@@ -951,7 +966,6 @@ func main() {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Unknown ID \"", id_str, "\"!"))
 			}
 			val.Enabled = !val.Enabled
-			fmt.Printf("Toggled '%s' to %t\n", val.ID, val.Enabled)
 			set_data(profile, sub)
 
 			render_workspace_container_to_html(c)
@@ -988,11 +1002,6 @@ func main() {
 
 			profile_data := get_data(sub)
 			profile_data.Tags = extract_tags_from_multiform(form)
-			fmt.Println("Tags in memory before addition:")
-			for _, t := range profile_data.Tags {
-				fmt.Println(t.StringShort())
-			}
-			fmt.Println("")
 			if len(profile_data.Tags) >= 32 {
 				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 				return
@@ -1001,11 +1010,6 @@ func main() {
 			new_tag.Nr = fmt.Sprint(len(profile_data.Tags))
 			profile_data.Tags = append(profile_data.Tags, new_tag)
 			profile_data.normalize_tag_nrs()
-			fmt.Println("Tags in memory:")
-			for _, t := range profile_data.Tags {
-				fmt.Println(t.StringShort())
-			}
-			fmt.Println("")
 			c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 		})
 
@@ -1017,7 +1021,6 @@ func main() {
 					return false
 				}
 				sub := get_uuid(c)
-				fmt.Println("Forms:\n", form.File)
 				files := form.File["files"]
 				titles := form.Value["title"]
 				var title string
@@ -1029,9 +1032,6 @@ func main() {
 				} else {
 					title = ""
 				}
-
-				title_for_loggin, err := json.Marshal(titles)
-				fmt.Println("title Value: ", string(title_for_loggin))
 
 				//webpreviews
 				preview_url_idxs := find_url_in_string([]byte(title))
@@ -1049,9 +1049,10 @@ func main() {
 						break
 					}
 				}
+				requestlog.FromGin(c).Info("message creation requested", "event", "message.create.requested", "attachment_count", len(files), "preview_url_count", len(preview_urls))
 				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
 				for _, url_for_preview := range preview_urls {
-					preview_build, err := previewbuilder.BuildURLPreview(url_for_preview, tmdbAPIKey)
+					preview_build, err := previewbuilder.BuildURLPreview(c.Request.Context(), requestlog.FromGin(c), url_for_preview, tmdbAPIKey)
 					if err == nil {
 						docentry_new_webpreviews = append(docentry_new_webpreviews, preview_build)
 					}
@@ -1078,9 +1079,6 @@ func main() {
 					for _, file := range files {
 						basename := fmt.Sprintf("%d__%d__%s", doc_id, date_now_utc.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
 						filename := DATA_BASE_PATH + "/uploads/" + sub + "/" + basename
-						fmt.Println(filename)
-						fmt.Println(date_str)
-						fmt.Println(time.Parse(http.TimeFormat, date_str))
 						// TODO: error handling if first file is uploaded but later are failing
 						if err := c.SaveUploadedFile(file, filename); err != nil {
 							c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
@@ -1106,7 +1104,6 @@ func main() {
 			if id_str == "" {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
 			}
-			fmt.Printf("Got ID: %s\n", id_str)
 			id, err := strconv.Atoi(id_str)
 			if err != nil {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
@@ -1144,7 +1141,6 @@ func main() {
 			if id_str == "" {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
 			}
-			fmt.Printf("Got ID: %s\n", id_str)
 			id, err := strconv.Atoi(id_str)
 			if err != nil {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))

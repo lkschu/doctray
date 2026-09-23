@@ -2,6 +2,7 @@ package previewbuilder
 
 import (
 	"bytes"
+	"context"
 	"net/url"
 	"os"
 	"testing"
@@ -61,7 +62,7 @@ func TestSavedPreviewFixtures(t *testing.T) {
 				if tmdbAPIKey == "" {
 					t.Fatal("DOCTRAY_TMDB_API_KEY is required when DOCTRAY_TMDB_LIVE_TEST=1")
 				}
-				preview, handled, err := tmdbPreviewForIMDbTitle(fixture.sourceURL, tmdbAPIKey)
+				preview, handled, err := tmdbPreviewForIMDbTitle(context.Background(), fixture.sourceURL, tmdbAPIKey)
 				if err != nil {
 					t.Fatalf("TMDb lookup failed: %v", err)
 				}

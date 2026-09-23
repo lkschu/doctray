@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -385,35 +386,62 @@ func extractPreview(body []byte, pageURL *url.URL) (previewExtraction, error) {
 	return extraction, nil
 }
 
-func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
-	if preview, handled := redditOEmbedPreview(inputURL); handled {
+func BuildURLPreview(ctx context.Context, logger *slog.Logger, inputURL, tmdbAPIKey string) (URLPreview, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger = logger.With("component", "previewbuilder")
+
+	if preview, handled := redditOEmbedPreview(ctx, inputURL); handled {
+		logger.Info("preview resolved", "event", "preview.resolved", "host", preview.Domain, "source", "reddit_oembed")
 		return preview, nil
 	}
 	if tmdbAPIKey != "" {
-		preview, handled, err := tmdbPreviewForIMDbTitle(inputURL, tmdbAPIKey)
+		preview, handled, err := tmdbPreviewForIMDbTitle(ctx, inputURL, tmdbAPIKey)
 		if handled {
 			if err == nil {
+				logger.Info("preview resolved", "event", "preview.resolved", "host", preview.Domain, "source", "tmdb")
 				return preview, nil
 			}
+			logger.Warn("preview fallback", "event", "preview.fallback", "host", previewHost(inputURL), "reason", "tmdb_error", "error", err)
 			return urlFallbackPreview(inputURL)
 		}
 	}
 
-	preview, err := URLPreview{}.New(inputURL)
+	preview, err := URLPreview{}.New(ctx, logger, inputURL)
 	if err == nil {
 		return preview, nil
 	}
+	logger.Warn("preview fallback", "event", "preview.fallback", "host", previewHost(inputURL), "reason", "fetch_error", "error", err)
 	return urlFallbackPreview(inputURL)
 }
 
-func (URLPreview) New(input_url string) (URLPreview, error) {
+func previewHost(rawURL string) string {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return parsedURL.Hostname()
+}
+
+func (URLPreview) New(ctx context.Context, logger *slog.Logger, input_url string) (URLPreview, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.Default().With("component", "previewbuilder")
+	}
 	urlpreview := URLPreview{}
 
 	// 1. Get bases
-	resp, url_parsed, err := fetchPublicURL(context.Background(), http.MethodGet, input_url)
+	resp, url_parsed, err := fetchPublicURL(ctx, http.MethodGet, input_url)
 	if err != nil {
 		var statusErr *previewHTTPStatusError
 		if errors.As(err, &statusErr) {
+			logger.Warn("preview fallback", "event", "preview.fallback", "host", statusErr.url.Hostname(), "reason", "http_status", "status", statusErr.status)
 			return hostFallbackPreview(statusErr.url), nil
 		}
 		return urlpreview, errors.New("Parse failure")
@@ -422,6 +450,7 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPreviewBodyBytes+1))
 	if err != nil {
+		logger.Warn("preview fallback", "event", "preview.fallback", "host", url_parsed.Hostname(), "reason", "body_read_error", "error", err)
 		return hostFallbackPreview(url_parsed), nil
 	}
 	if len(body) > maxPreviewBodyBytes {
@@ -429,13 +458,16 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	}
 	extraction, err := extractPreview(body, url_parsed)
 	if err != nil {
+		logger.Warn("preview fallback", "event", "preview.fallback", "host", url_parsed.Hostname(), "reason", "extraction_error", "error", err)
 		return hostFallbackPreview(url_parsed), nil
 	}
 	urlpreview = extraction.Preview
 	if isChallengePreview(urlpreview, body) {
+		logger.Warn("preview fallback", "event", "preview.fallback", "host", url_parsed.Hostname(), "reason", "challenge_page")
 		return hostFallbackPreview(url_parsed), nil
 	}
 	if urlpreview.Title == "" {
+		logger.Warn("preview fallback", "event", "preview.fallback", "host", url_parsed.Hostname(), "reason", "empty_title")
 		return hostFallbackPreview(url_parsed), nil
 	}
 	if urlpreview.Image == "" {

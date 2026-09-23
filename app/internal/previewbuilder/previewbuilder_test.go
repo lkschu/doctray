@@ -120,6 +120,22 @@ func TestURLFallbackPreviewRejectsInvalidURL(t *testing.T) {
 	}
 }
 
+func TestPendingURLPreview(t *testing.T) {
+	preview, err := PendingURLPreview("https://www.example.com/articles/one", "preview-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := preview.ID, "preview-1"; got != want {
+		t.Errorf("ID = %q, want %q", got, want)
+	}
+	if !preview.Pending {
+		t.Error("Pending = false, want true")
+	}
+	if got, want := preview.Image, previewPlaceholderImage; got != want {
+		t.Errorf("image = %q, want %q", got, want)
+	}
+}
+
 func TestIsChallengePreview(t *testing.T) {
 	tests := []struct {
 		name    string

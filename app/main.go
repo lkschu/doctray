@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
@@ -18,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"path"
@@ -50,6 +52,121 @@ var DATA_BASE_PATH = ""
 
 const auth_session_duration = 8 * time.Hour
 const maxPreviewsPerMessage = 3
+const previewWorkerCount = 2
+const previewJobQueueSize = 128
+
+var profileLocks sync.Map
+
+func withProfileLock(subject string, operation func()) {
+	lockValue, _ := profileLocks.LoadOrStore(subject, &sync.Mutex{})
+	lock := lockValue.(*sync.Mutex)
+	lock.Lock()
+	defer lock.Unlock()
+	operation()
+}
+
+type previewJob struct {
+	subject   string
+	postID    int
+	previewID string
+	url       string
+}
+
+func (job previewJob) key() string {
+	return fmt.Sprintf("%s\x00%d\x00%s", job.subject, job.postID, job.previewID)
+}
+
+type previewJobQueue struct {
+	jobs       chan previewJob
+	activeJobs map[string]bool
+	mu         sync.Mutex
+	tmdbAPIKey string
+	logger     *slog.Logger
+}
+
+func newPreviewJobQueue(tmdbAPIKey string, logger *slog.Logger) *previewJobQueue {
+	queue := &previewJobQueue{
+		jobs:       make(chan previewJob, previewJobQueueSize),
+		activeJobs: make(map[string]bool),
+		tmdbAPIKey: tmdbAPIKey,
+		logger:     logger,
+	}
+	for range previewWorkerCount {
+		go queue.run()
+	}
+	return queue
+}
+
+func (queue *previewJobQueue) enqueue(job previewJob) {
+	key := job.key()
+	queue.mu.Lock()
+	if queue.activeJobs[key] {
+		queue.mu.Unlock()
+		return
+	}
+	queue.activeJobs[key] = true
+	queue.mu.Unlock()
+
+	select {
+	case queue.jobs <- job:
+	default:
+		queue.mu.Lock()
+		delete(queue.activeJobs, key)
+		queue.mu.Unlock()
+		queue.logger.With("component", "previewworker").Warn("preview job queue is full", "event", "preview.job.dropped")
+	}
+}
+
+func (queue *previewJobQueue) run() {
+	for job := range queue.jobs {
+		queue.resolve(job)
+		queue.mu.Lock()
+		delete(queue.activeJobs, job.key())
+		queue.mu.Unlock()
+	}
+}
+
+func (queue *previewJobQueue) resolve(job previewJob) {
+	preview, err := previewbuilder.BuildURLPreview(context.Background(), queue.logger, job.url, queue.tmdbAPIKey)
+	if err != nil {
+		queue.logger.With("component", "previewworker").Warn("preview job failed", "event", "preview.job.failed", "error", err)
+		return
+	}
+
+	persisted := false
+	withProfileLock(job.subject, func() {
+		profile := get_data(job.subject)
+		postIndex := profile.find_post_idx_by_id(job.postID)
+		if postIndex == -1 {
+			return
+		}
+		for index := range profile.Posts[postIndex].Webpreview {
+			storedPreview := profile.Posts[postIndex].Webpreview[index]
+			if storedPreview.ID != job.previewID || !storedPreview.Pending || storedPreview.URL != job.url {
+				continue
+			}
+			preview.ID = storedPreview.ID
+			preview.Pending = false
+			profile.Posts[postIndex].Webpreview[index] = preview
+			set_data(profile, job.subject)
+			persisted = true
+			return
+		}
+	})
+	if persisted {
+		queue.logger.With("component", "previewworker").Info("preview job completed", "event", "preview.job.completed", "host", preview.Domain)
+	}
+}
+
+func (queue *previewJobQueue) enqueuePendingPreviews(subject string, profile profile_data) {
+	for _, post := range profile.Posts {
+		for _, preview := range post.Webpreview {
+			if preview.Pending {
+				queue.enqueue(previewJob{subject: subject, postID: post.DocID, previewID: preview.ID, url: preview.URL})
+			}
+		}
+	}
+}
 
 func configureLogger() *slog.Logger {
 	level := new(slog.LevelVar)
@@ -424,12 +541,16 @@ func add_formatting_tags_to_string(s string) string {
 
 func render_workspace_container_to_html(c *gin.Context) {
 	sub := get_uuid(c)
-	c.HTML(http.StatusOK, "posts/workspace-container.tmpl", render_all(get_data(sub)))
+	withProfileLock(sub, func() {
+		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", render_all(get_data(sub)))
+	})
 }
 
 func render_posts_to_html(c *gin.Context) {
 	sub := get_uuid(c)
-	c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
+	withProfileLock(sub, func() {
+		c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
+	})
 }
 
 type docentry_file struct {
@@ -542,6 +663,15 @@ type post struct {
 	Webpreview   []previewbuilder.URLPreview `json:"webpreview"`
 	Tags         []string                    `json:"tags"`
 	Tags_enabled []tag_enabled               `json:"-"`
+}
+
+func (p post) HasPendingPreviews() bool {
+	for _, preview := range p.Webpreview {
+		if preview.Pending {
+			return true
+		}
+	}
+	return false
 }
 
 func (t post) String() string {
@@ -773,6 +903,23 @@ func set_data(profile profile_data, sub string) {
 	}
 }
 
+func resumePendingPreviews(queue *previewJobQueue) {
+	entries, err := os.ReadDir(filepath.Join(DATA_BASE_PATH, "data"))
+	if err != nil {
+		queue.logger.With("component", "previewworker").Error("pending preview scan failed", "event", "preview.resume.failed", "error", err)
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		subject := strings.TrimSuffix(entry.Name(), ".json")
+		withProfileLock(subject, func() {
+			queue.enqueuePendingPreviews(subject, get_data(subject))
+		})
+	}
+}
+
 func get_uuid(c *gin.Context) string {
 	session := sessions.Default(c)
 	u := session.Get("sub")
@@ -826,6 +973,8 @@ func main() {
 		panic(fmt.Sprintf("DOCTRAY_TARGET_DIRECTORY specified path (%s) is not available!", basepath))
 	}
 	DATA_BASE_PATH = basepath
+	previewJobs := newPreviewJobQueue(tmdbAPIKey, logger)
+	resumePendingPreviews(previewJobs)
 
 	router := gin.New()
 	router.Use(requestlog.Middleware(logger))
@@ -879,9 +1028,30 @@ func main() {
 	{
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
-			profile_data := get_data(sub)
-			set_data(profile_data, sub)
-			c.HTML(http.StatusOK, "posts/tray.tmpl", render_all(profile_data))
+			withProfileLock(sub, func() {
+				profileData := get_data(sub)
+				set_data(profileData, sub)
+				previewJobs.enqueuePendingPreviews(sub, profileData)
+				c.HTML(http.StatusOK, "posts/tray.tmpl", render_all(profileData))
+			})
+		})
+		router_tray.GET("/doc-preview/:id", func(c *gin.Context) {
+			postID, err := strconv.Atoi(c.Param("id"))
+			if err != nil {
+				c.String(http.StatusBadRequest, "invalid post ID")
+				return
+			}
+			sub := get_uuid(c)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				postIndex := profile.find_post_idx_by_id(postID)
+				if postIndex == -1 {
+					c.Status(http.StatusNotFound)
+					return
+				}
+				previewJobs.enqueuePendingPreviews(sub, profile)
+				c.HTML(http.StatusOK, "base/doc-webpreviews.tmpl", profile.Posts[postIndex])
+			})
 		})
 
 		router_tray.POST("/ping", func(ctx *gin.Context) { ctx.String(http.StatusOK, "All fine") })
@@ -929,53 +1099,62 @@ func main() {
 			}
 
 			sub := get_uuid(c)
-			profile := get_data(sub)
-			p_idx := profile.find_post_idx_by_id(post_id)
-			err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
-			if err != nil {
-				c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
-			}
-			set_data(profile, sub)
-			// c.HTML(http.StatusOK, "base/doc.tmpl", render_post(profile.Posts[p_idx]))
-
-			var t_en *tag_enabled
-			for i, t := range profile.Posts[p_idx].Tags_enabled {
-				if t.Tag.ID == tag_uid {
-					t_en = &profile.Posts[p_idx].Tags_enabled[i]
-					break
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				p_idx := profile.find_post_idx_by_id(post_id)
+				err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
+				if err != nil {
+					c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
+					return
 				}
-			}
-			c.HTML(http.StatusOK, "base/doc-tagbar-segments.tmpl", t_en)
+				set_data(profile, sub)
+
+				var t_en *tag_enabled
+				for i, t := range profile.Posts[p_idx].Tags_enabled {
+					if t.Tag.ID == tag_uid {
+						t_en = &profile.Posts[p_idx].Tags_enabled[i]
+						break
+					}
+				}
+				c.HTML(http.StatusOK, "base/doc-tagbar-segments.tmpl", t_en)
+			})
 		})
 		router_tray.POST("/star-filter", func(c *gin.Context) {
 			sub := get_uuid(c)
-			profile := get_data(sub)
-			profile.Only_favorites = !profile.Only_favorites
-			set_data(profile, sub)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				profile.Only_favorites = !profile.Only_favorites
+				set_data(profile, sub)
+			})
 			render_workspace_container_to_html(c)
 		})
 		router_tray.POST("/tag-toggle-filter", func(c *gin.Context) {
 			sub := get_uuid(c)
-			profile := get_data(sub)
 			id_str := c.PostForm("id")
 			if id_str == "" {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
 			}
-			val, ok := profile.Tag_map[id_str]
-			if !ok {
-				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Unknown ID \"", id_str, "\"!"))
-			}
-			val.Enabled = !val.Enabled
-			set_data(profile, sub)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				val, ok := profile.Tag_map[id_str]
+				if !ok {
+					c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Unknown ID \"", id_str, "\"!"))
+					return
+				}
+				val.Enabled = !val.Enabled
+				set_data(profile, sub)
+			})
 
 			render_workspace_container_to_html(c)
 		})
 		router_tray.POST("/tag-edit", func(c *gin.Context) {
 			sub := get_uuid(c)
-			profile_data := get_data(sub)
-			profile_data.Tag_edit = true
-			set_data(profile_data, sub)
-			c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+			withProfileLock(sub, func() {
+				profile_data := get_data(sub)
+				profile_data.Tag_edit = true
+				set_data(profile_data, sub)
+				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+			})
 		})
 		router_tray.POST("/tag-apply", func(c *gin.Context) {
 			sub := get_uuid(c)
@@ -985,10 +1164,12 @@ func main() {
 				return
 			}
 
-			profile_data := get_data(sub)
-			profile_data.Tags = extract_tags_from_multiform(form)
-			profile_data.Tag_edit = false
-			set_data(profile_data, sub)
+			withProfileLock(sub, func() {
+				profile_data := get_data(sub)
+				profile_data.Tags = extract_tags_from_multiform(form)
+				profile_data.Tag_edit = false
+				set_data(profile_data, sub)
+			})
 			c.Header("HX-Refresh", "true")
 			c.String(http.StatusOK, "")
 		})
@@ -1000,103 +1181,91 @@ func main() {
 				return
 			}
 
-			profile_data := get_data(sub)
-			profile_data.Tags = extract_tags_from_multiform(form)
-			if len(profile_data.Tags) >= 32 {
+			withProfileLock(sub, func() {
+				profile_data := get_data(sub)
+				profile_data.Tags = extract_tags_from_multiform(form)
+				if len(profile_data.Tags) >= 32 {
+					c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+					return
+				}
+				new_tag := tag{}.New()
+				new_tag.Nr = fmt.Sprint(len(profile_data.Tags))
+				profile_data.Tags = append(profile_data.Tags, new_tag)
+				profile_data.normalize_tag_nrs()
 				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
-				return
-			}
-			new_tag := tag{}.New()
-			new_tag.Nr = fmt.Sprint(len(profile_data.Tags))
-			profile_data.Tags = append(profile_data.Tags, new_tag)
-			profile_data.normalize_tag_nrs()
-			c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+			})
 		})
 
 		router_tray.POST("/doc-create", func(c *gin.Context) {
-			ret := func(c *gin.Context) bool { // Ugly hack to let the defer update the data before we use it in the tmpl
-				form, err := c.MultipartForm()
-				if err != nil {
-					c.String(http.StatusBadRequest, "get form err: %s", err.Error())
-					return false
-				}
-				sub := get_uuid(c)
-				files := form.File["files"]
-				titles := form.Value["title"]
-				var title string
-				if len(titles) > 0 {
-					title = titles[0]
-					title = strings.TrimSpace(title)
-					title = strings.ReplaceAll(title, "\r", "")
-					title = html.EscapeString(title)
-				} else {
-					title = ""
-				}
-
-				//webpreviews
-				preview_url_idxs := find_url_in_string([]byte(title))
-				preview_urls := make([]string, 0, maxPreviewsPerMessage)
-				seen_preview_urls := make(map[string]bool)
-				for _, idx_pair := range preview_url_idxs {
-					raw_url_for_preview := string([]byte(title)[idx_pair[0]:idx_pair[1]])
-					url_for_preview, err := urlutil.NormalizeHTTPURL(raw_url_for_preview)
-					if err != nil || seen_preview_urls[url_for_preview] {
-						continue
-					}
-					seen_preview_urls[url_for_preview] = true
-					preview_urls = append(preview_urls, url_for_preview)
-					if len(preview_urls) == maxPreviewsPerMessage {
-						break
-					}
-				}
-				requestlog.FromGin(c).Info("message creation requested", "event", "message.create.requested", "attachment_count", len(files), "preview_url_count", len(preview_urls))
-				docentry_new_webpreviews := make([]previewbuilder.URLPreview, 0)
-				for _, url_for_preview := range preview_urls {
-					preview_build, err := previewbuilder.BuildURLPreview(c.Request.Context(), requestlog.FromGin(c), url_for_preview, tmdbAPIKey)
-					if err == nil {
-						docentry_new_webpreviews = append(docentry_new_webpreviews, preview_build)
-					}
-				}
-
-				date_now_utc := time.Now().UTC()
-				date_str := date_now_utc.Format(http.TimeFormat)
-				if len(files) == 0 {
-					if title == "" {
-						return false
-					}
-					profile := get_data(sub)
-					// defer func() {set_data(profile, sub)} ()
-					data := profile.Posts
-					data = append(data, post{DocID: get_data_new_id(&data), Title: template.HTML(title), Type: doctype_mesage, Date: date_str, Webpreview: docentry_new_webpreviews})
-					profile.Posts = data
-					set_data(profile, sub)
-				} else {
-					profile := get_data(sub)
-					doc_id := get_data_new_id(&profile.Posts)
-					defer func() { set_data(profile, sub) }()
-					docentry_new_files := make([]docentry_file, 0)
-					new_data := post{DocID: doc_id, Title: template.HTML(title), Type: doctype_file, Date: date_str, Files: docentry_new_files, Webpreview: docentry_new_webpreviews}
-					for _, file := range files {
-						basename := fmt.Sprintf("%d__%d__%s", doc_id, date_now_utc.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
-						filename := DATA_BASE_PATH + "/uploads/" + sub + "/" + basename
-						// TODO: error handling if first file is uploaded but later are failing
-						if err := c.SaveUploadedFile(file, filename); err != nil {
-							c.String(http.StatusBadRequest, "upload file err: %s", err.Error())
-							return false
-						}
-						docentry_new_files = append(docentry_new_files, docentry_file{Url: "/media/" + basename, OrgName: path.Base(file.Filename), Name: basename})
-						new_data.Files = docentry_new_files
-					}
-					profile.Posts = append(profile.Posts, new_data)
-				}
-				return true
-			}(c)
-			if ret {
-				render_posts_to_html(c)
-			} else {
-				c.String(http.StatusBadRequest, "Empty message!\n")
-				render_posts_to_html(c) // just resend the whole section, otherwise the upload progress bar must be changed
+			form, err := c.MultipartForm()
+			if err != nil {
+				c.String(http.StatusBadRequest, "get form err: %s", err.Error())
+				return
 			}
+			sub := get_uuid(c)
+			files := form.File["files"]
+			titles := form.Value["title"]
+			title := ""
+			if len(titles) > 0 {
+				title = html.EscapeString(strings.ReplaceAll(strings.TrimSpace(titles[0]), "\r", ""))
+			}
+			if len(files) == 0 && title == "" {
+				c.String(http.StatusBadRequest, "Empty message!\n")
+				render_posts_to_html(c)
+				return
+			}
+
+			previewURLs := make([]string, 0, maxPreviewsPerMessage)
+			seenPreviewURLs := make(map[string]bool)
+			for _, indexes := range find_url_in_string([]byte(title)) {
+				rawURL := string([]byte(title)[indexes[0]:indexes[1]])
+				normalizedURL, err := urlutil.NormalizeHTTPURL(rawURL)
+				if err != nil || seenPreviewURLs[normalizedURL] {
+					continue
+				}
+				seenPreviewURLs[normalizedURL] = true
+				previewURLs = append(previewURLs, normalizedURL)
+				if len(previewURLs) == maxPreviewsPerMessage {
+					break
+				}
+			}
+			pendingPreviews := make([]previewbuilder.URLPreview, 0, len(previewURLs))
+			for _, previewURL := range previewURLs {
+				preview, err := previewbuilder.PendingURLPreview(previewURL, fmt.Sprintf("%d-%s", time.Now().UnixNano(), rand_seq(8)))
+				if err == nil {
+					pendingPreviews = append(pendingPreviews, preview)
+				}
+			}
+			requestlog.FromGin(c).Info("message creation requested", "event", "message.create.requested", "attachment_count", len(files), "preview_url_count", len(pendingPreviews))
+
+			var uploadErr error
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				docID := get_data_new_id(&profile.Posts)
+				now := time.Now().UTC()
+				newPost := post{DocID: docID, Title: template.HTML(title), Type: doctype_mesage, Date: now.Format(http.TimeFormat), Webpreview: pendingPreviews}
+				if len(files) > 0 {
+					newPost.Type = doctype_file
+					for _, file := range files {
+						basename := fmt.Sprintf("%d__%d__%s", docID, now.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
+						filename := DATA_BASE_PATH + "/uploads/" + sub + "/" + basename
+						if err := c.SaveUploadedFile(file, filename); err != nil {
+							uploadErr = err
+							return
+						}
+						newPost.Files = append(newPost.Files, docentry_file{Url: "/media/" + basename, OrgName: path.Base(file.Filename), Name: basename})
+					}
+				}
+				profile.Posts = append(profile.Posts, newPost)
+				set_data(profile, sub)
+				previewJobs.enqueuePendingPreviews(sub, profile)
+			})
+			if uploadErr != nil {
+				c.String(http.StatusBadRequest, "upload file err: %s", uploadErr.Error())
+				return
+			}
+
+			render_posts_to_html(c)
 		})
 
 		router_tray.POST("/doc-delete", func(c *gin.Context) {
@@ -1110,17 +1279,19 @@ func main() {
 			}
 
 			sub := get_uuid(c)
-			profile := get_data(sub)
-			to_drop := -1
-			for i, e := range profile.Posts {
-				if e.DocID == id {
-					to_drop = i
-					break
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				to_drop := -1
+				for i, e := range profile.Posts {
+					if e.DocID == id {
+						to_drop = i
+						break
+					}
 				}
-			}
-			if to_drop == -1 {
-				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
-			} else {
+				if to_drop == -1 {
+					c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
+					return
+				}
 				for _, f := range profile.Posts[to_drop].Files {
 					if strings.HasPrefix(f.Url, "/media/") {
 						basename := strings.TrimPrefix(f.Url, "/media/")
@@ -1133,7 +1304,7 @@ func main() {
 				c.Header("Content-Type", "text/html")
 				answer := "<li class=\"doc-entry doc-type-removed\"> <i>Removed</i> </li>"
 				c.String(http.StatusOK, answer)
-			}
+			})
 		})
 
 		router_tray.POST("/doc-star", func(c *gin.Context) {
@@ -1147,11 +1318,13 @@ func main() {
 			}
 
 			sub := get_uuid(c)
-			profile := get_data(sub)
-			toggle_star := profile.find_post_idx_by_id(id)
-			if toggle_star == -1 {
-				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
-			} else {
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				toggle_star := profile.find_post_idx_by_id(id)
+				if toggle_star == -1 {
+					c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
+					return
+				}
 				profile.Posts[toggle_star].Starred = !profile.Posts[toggle_star].Starred
 				set_data(profile, sub)
 				c.Header("Content-Type", "text/html")
@@ -1162,7 +1335,7 @@ func main() {
 					answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
 				}
 				c.String(http.StatusOK, answer)
-			}
+			})
 		})
 	}
 

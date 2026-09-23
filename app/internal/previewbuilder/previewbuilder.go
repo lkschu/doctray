@@ -288,6 +288,8 @@ func StringCleanup(s string, maxlength int) string {
 }
 
 type URLPreview struct {
+	ID            string `json:"id"`
+	Pending       bool   `json:"pending"`
 	URL           string
 	Title         string
 	Description   string
@@ -343,6 +345,17 @@ func urlFallbackPreview(rawURL string) (URLPreview, error) {
 		Domain: pageURL.Hostname(),
 		Image:  previewPlaceholderImage,
 	}, nil
+}
+
+func PendingURLPreview(rawURL, id string) (URLPreview, error) {
+	preview, err := urlFallbackPreview(rawURL)
+	if err != nil {
+		return URLPreview{}, err
+	}
+	preview.ID = id
+	preview.Pending = true
+	preview.Description = "Loading preview…"
+	return preview, nil
 }
 
 func isChallengePreview(preview URLPreview, body []byte) bool {

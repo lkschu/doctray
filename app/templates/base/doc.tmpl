@@ -11,7 +11,7 @@
                         {{ end }}
                     </div>
 
-                    {{ if .Webpreview }}{{ template "base/doc-webpreview.tmpl" .Webpreview }}{{ end }}
+                    {{ if .Webpreview }}{{ template "base/doc-webpreviews.tmpl" . }}{{ end }}
 
                     <div class="doc-entry-type-container debug">
                         <!--<div style="white-space:pre-line">.Title</div>-->
@@ -73,6 +73,12 @@
         </div>
         </a>
     {{ end }}
+{{ end }}
+
+{{ define "base/doc-webpreviews.tmpl" }}
+    <div id="doc-webpreviews-{{ .DocID }}"{{ if .HasPendingPreviews }} hx-get="/tray/doc-preview/{{ .DocID }}" hx-trigger="every 1s" hx-swap="outerHTML"{{ end }}>
+        {{ template "base/doc-webpreview.tmpl" .Webpreview }}
+    </div>
 {{ end }}
 
 {{ define "base/doc-url.tmpl" }}

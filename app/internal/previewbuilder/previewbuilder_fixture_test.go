@@ -42,24 +42,24 @@ func TestSavedPreviewFixtures(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			preview, err := extractPreview(body, pageURL)
+			extraction, err := extractPreview(body, pageURL)
 			if err != nil {
 				t.Logf("extraction error: %v", err)
 				return
 			}
 
-			imageSource := "readability"
-			fallbackRequired := preview.Image == ""
+			imageSource := extraction.ImageSource
+			fallbackRequired := extraction.Preview.Image == ""
 			fallbackCandidates := []string(nil)
 			if fallbackRequired {
 				imageSource = "fallback required"
 				fallbackCandidates = fallbackImageURLs(string(body), pageURL)
 			}
 
-			t.Logf("title (readability): %q", preview.Title)
-			t.Logf("description (readability): %q", preview.Description)
-			t.Logf("image (%s): %q", imageSource, preview.Image)
-			t.Logf("favicon: %q", preview.Favicon)
+			t.Logf("title (%s): %q", extraction.TitleSource, extraction.Preview.Title)
+			t.Logf("description (%s): %q", extraction.DescriptionSource, extraction.Preview.Description)
+			t.Logf("image (%s): %q", imageSource, extraction.Preview.Image)
+			t.Logf("favicon: %q", extraction.Preview.Favicon)
 			t.Logf("fallback required: %t", fallbackRequired)
 			if fallbackRequired {
 				t.Logf("fallback candidates: %#v", fallbackCandidates)

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"regexp"
 	"strings"
 	"time"
 
@@ -285,30 +284,39 @@ type URLPreview struct {
 	Image string
 }
 
-func extractPreview(body []byte, pageURL *url.URL) (URLPreview, error) {
+type previewExtraction struct {
+	Preview           URLPreview
+	TitleSource       string
+	DescriptionSource string
+	ImageSource       string
+}
+
+func extractPreview(body []byte, pageURL *url.URL) (previewExtraction, error) {
 	article, err := readability.FromReader(bytes.NewReader(body), pageURL)
 	if err != nil {
-		return URLPreview{}, err
+		return previewExtraction{}, err
 	}
 
-	preview := URLPreview{
+	extraction := previewExtraction{Preview: URLPreview{
 		URL:         pageURL.String(),
 		Title:       StringCleanup(article.Title, 200),
 		Description: StringCleanup(article.Excerpt, 500),
 		Favicon:     resolvePreviewURL(pageURL, article.Favicon),
 		Domain:      pageURL.Hostname(),
 		Image:       resolvePreviewURL(pageURL, article.Image),
+	}}
+	if extraction.Preview.Title != "" {
+		extraction.TitleSource = "readability"
+	}
+	if extraction.Preview.Description != "" {
+		extraction.DescriptionSource = "readability"
+	}
+	if extraction.Preview.Image != "" {
+		extraction.ImageSource = "readability"
 	}
 
-	if preview.Domain == "www.reddit.com" {
-		redditTitleRegex := regexp.MustCompile(`<shreddit-title title="([^"]+)">`)
-		matches := redditTitleRegex.FindAllStringSubmatch(string(body), -1)
-		if len(matches) >= 1 && len(matches[0]) >= 2 && matches[0][1] != "" {
-			preview.Title = matches[0][1]
-		}
-	}
-
-	return preview, nil
+	enrichPreview(&extraction, string(body))
+	return extraction, nil
 }
 
 func BuildURLPreview(inputURL, tmdbAPIKey string) (URLPreview, error) {
@@ -338,10 +346,11 @@ func (URLPreview) New(input_url string) (URLPreview, error) {
 	if len(body) > maxPreviewBodyBytes {
 		body = body[:maxPreviewBodyBytes]
 	}
-	urlpreview, err = extractPreview(body, url_parsed)
+	extraction, err := extractPreview(body, url_parsed)
 	if err != nil {
 		return urlpreview, errors.New("Parse failure")
 	}
+	urlpreview = extraction.Preview
 	if urlpreview.Image == "" {
 		urlpreview.Image = findFallbackImage(string(body), url_parsed)
 	}

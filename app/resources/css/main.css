@@ -333,8 +333,9 @@ textarea[name=title] {
 	/* background-color: white; */
 	display: flex;
 	border-radius: 0.35rem;
-    transition-duration: 0.15s;
-    transition-delay: 0.5s;
+	transition-property: height, font-size, margin-top, margin-bottom, border-radius;
+	transition-duration: 0.15s;
+	transition-delay: 0.5s;
 	border-color: var(--gray-05);
 	border-style: solid;
 	border-width: 1px;
@@ -342,7 +343,8 @@ textarea[name=title] {
     font-size: 12px;
 
 	overflow: hidden; /* rounded corners clips children */
-    margin-bottom: 2px;
+	margin-top: 0;
+	margin-bottom: 2px;
 }
 .doc-entry-tagview:hover {
     font-size: 20px;
@@ -350,6 +352,8 @@ textarea[name=title] {
     transition-delay: 0.5s;
 	border-radius: 0.65rem;
 	height: 36px;
+	margin-top: -9px;
+	margin-bottom: 2px;
 }
 .doc-entry-tagview-segment {
 	/* border-radius: 0.65rem; */
@@ -587,6 +591,11 @@ tt {
     justify-content: space-between;
     background-color: var(--debug-c-04);
     user-select: none;
+	margin-bottom: 0;
+	transition: margin-bottom 0.15s 0.5s;
+}
+.doc-entry-tagview:hover ~ .doc-entry-stats {
+	margin-bottom: -9px;
 }
 .doc-entry-stat-id {
     background-color: var(--debug-c-05);

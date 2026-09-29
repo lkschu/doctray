@@ -22,8 +22,9 @@
                 hx-target="#tag-container"
                 hx-swap="outerHTML">Edit</button>
             <button class=tag-container-buttons id="star-filter-button" hx-post="/tray/star-filter"
+                 hx-sync="#tray-container:drop"
                 hx-target="#workspace-container"
-                hx-swap="outerHTML scroll:bottom"
+                 hx-swap="outerHTML scroll:#doc-container:bottom"
                 >
                 <!--<span class="material-symbols-outlined colortest">star_shine</span>-->
                 <div class="tooltip">
@@ -46,9 +47,10 @@
               <input type="checkbox" id="select-tag-{{.Nr}}"   name="tag[{{ .Nr }}]select" value="tag[{{ .Nr }}]select" {{ if .Enabled }}checked{{ end }}
                 hx-trigger="change"
                 hx-post="/tray/tag-toggle-filter"
+                hx-sync="#tray-container:drop"
                 hx-vals='{"id":"{{ .ID }}"}'
                 hx-target="#workspace-container"
-                hx-swap="outerHTML scroll:bottom"
+                 hx-swap="outerHTML scroll:#doc-container:bottom"
                 >
               <span class="checkmark"></span>
             </label>
@@ -77,6 +79,9 @@
                     id="upload-button"
                     hx-encoding="multipart/form-data"
                     hx-post="/tray/tag-apply"
+                    hx-sync="#tray-container:drop"
+                    hx-target="#workspace-container"
+                    hx-swap="outerHTML scroll:#doc-container:bottom"
                     type="submit" class="btn btn-primary">Apply</button>
             </div>
 

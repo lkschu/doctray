@@ -91,12 +91,12 @@ func TestAttachmentTemplateOnlyLoadsThumbnail(t *testing.T) {
 }
 
 func TestComposerTemplate(t *testing.T) {
-	tmpl, err := template.ParseFiles("templates/base/doc-list.tmpl", "templates/base/doc.tmpl")
+	tmpl, err := template.ParseFiles("templates/base/composer.tmpl")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var rendered bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&rendered, "base/doc-list.tmpl", profile_data{}); err != nil {
+	if err := tmpl.ExecuteTemplate(&rendered, "base/composer.tmpl", profile_data{}); err != nil {
 		t.Fatal(err)
 	}
 	document, err := htmlparser.Parse(&rendered)
@@ -129,7 +129,7 @@ func TestComposerTemplate(t *testing.T) {
 		}
 	}
 	visit(document)
-	for _, id := range []string{"form", "docUpload-text", "docUpload", "docUpload-label", "docUpload-attachments", "docUpload-error", "upload-button"} {
+	for _, id := range []string{"form", "docUpload-text", "docUpload", "docUpload-label", "docUpload-attachments", "docUpload-attachment-summary", "docUpload-error", "upload-button"} {
 		if elements[id] == nil {
 			t.Fatalf("composer element %q missing", id)
 		}
@@ -137,6 +137,9 @@ func TestComposerTemplate(t *testing.T) {
 	form := elements["form"]
 	if attribute(form, "hx-post") != "/tray/doc-create" || attribute(form, "hx-encoding") != "multipart/form-data" || attribute(form, "hx-target") != "#doc-container" {
 		t.Error("composer does not use the single multipart HTMX submission path")
+	}
+	if attribute(form, "hx-sync") != "#tray-container:queue all" {
+		t.Error("sends must serialize with workspace replacements")
 	}
 	for _, id := range []string{"docUpload-text", "docUpload"} {
 		for _, attr := range elements[id].Attr {
@@ -171,5 +174,90 @@ func TestComposerTemplate(t *testing.T) {
 	}
 	if attribute(form, "aria-busy") != "false" {
 		t.Error("composer must start idle")
+	}
+	summary := elements["docUpload-attachment-summary"]
+	if attribute(summary, "role") != "status" || attribute(summary, "aria-live") != "polite" {
+		t.Error("attachment count and size must be announced politely")
+	}
+	summaryHidden := false
+	for _, attr := range summary.Attr {
+		if attr.Key == "hidden" {
+			summaryHidden = true
+		}
+	}
+	if !summaryHidden {
+		t.Error("attachment summary must start hidden for an empty draft")
+	}
+}
+
+func TestTrayLayoutTemplate(t *testing.T) {
+	tmpl, err := template.ParseGlob("templates/*/*.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tagEdit := range []bool{false, true} {
+		profile := profile_data{Tag_edit: tagEdit, Tags: []tag{{ID: "test-tag", Nr: "0", Name: "Test"}}}
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, "posts/tray.tmpl", profile); err != nil {
+			t.Fatal(err)
+		}
+		document, err := htmlparser.Parse(&rendered)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attribute := func(node *htmlparser.Node, name string) string {
+			for _, attr := range node.Attr {
+				if attr.Key == name {
+					return attr.Val
+				}
+			}
+			return ""
+		}
+		elements := make(map[string]*htmlparser.Node)
+		composerCount := 0
+		var visit func(*htmlparser.Node)
+		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.ElementNode {
+				id := attribute(node, "id")
+				if id != "" {
+					elements[id] = node
+				}
+				if id == "uploadform" {
+					composerCount++
+				}
+				if attribute(node, "hx-post") == "/tray/tag-apply" {
+					if attribute(node, "hx-target") != "#workspace-container" || attribute(node, "hx-swap") != "outerHTML scroll:#doc-container:bottom" {
+						t.Error("applying tag edits must update only the workspace and scroll the message list")
+					}
+				}
+				if attribute(node, "hx-target") == "#workspace-container" && attribute(node, "hx-sync") != "#tray-container:drop" {
+					t.Error("mutable workspace controls must not enter the send queue")
+				}
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				visit(child)
+			}
+		}
+		visit(document)
+		for _, id := range []string{"tray-container", "workspace-container", "doc-container", "uploadform"} {
+			if elements[id] == nil {
+				t.Fatalf("tray element %q missing (tag edit: %t)", id, tagEdit)
+			}
+		}
+		if composerCount != 1 {
+			t.Errorf("tray contains %d composers, want one", composerCount)
+		}
+		if elements["uploadform"].Parent != elements["tray-container"] || elements["workspace-container"].Parent != elements["tray-container"] {
+			t.Error("composer must be a sibling of the replaceable workspace")
+		}
+		for _, fragment := range []string{"posts/workspace-container.tmpl", "base/doc-list.tmpl"} {
+			rendered.Reset()
+			if err := tmpl.ExecuteTemplate(&rendered, fragment, profile); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(rendered.String(), `id="uploadform"`) || strings.Contains(rendered.String(), `id="docUpload-text"`) {
+				t.Errorf("%s recreates the composer and would lose its draft", fragment)
+			}
+		}
 	}
 }

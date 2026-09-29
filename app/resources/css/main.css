@@ -127,9 +127,10 @@ body {
   /* min-width: 100vw; */
 }
 
-#workspace-container {
+#tray-container {
     position: absolute;
     top: calc(1% + 2.5rem); /* header height */
+    bottom: calc(1% + 2.5rem); /* footer height */
     left: 50%;
     transform: translateX(-50%);
 
@@ -141,6 +142,21 @@ body {
     max-width: 120em;
     /* padding: 1em 2em 2em 2em; */
     padding: 0.5em;
+	display: flex;
+	flex-direction: column;
+}
+#workspace-container {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+#workspace-container > #tag-container {
+	flex-shrink: 0;
+	max-height: 50%;
+	overflow-y: auto;
+	box-sizing: border-box;
 }
 
 .main-list {
@@ -166,7 +182,8 @@ body {
     /* float: right; */
     /* max-width: 70em; */
     min-width: 0;
-    height: 70vh;
+	flex: 1;
+	min-height: 0;
     /* max-height: 80em; */
     border-radius: 0 0 1em 1em;
     background-color: var(--tray-bg);
@@ -177,6 +194,10 @@ body {
     padding: 1em;
 }
 #uploadform {
+	flex-shrink: 0;
+	max-height: 60%;
+	box-sizing: border-box;
+	overflow-y: auto;
     border-width: 2px 0 0 0;
     border-style: solid;
     border-color: #333 #999 #999 #999;
@@ -220,6 +241,7 @@ input[type="file"] {
 	min-width: 0;
 }
 #docUpload-text {
+	display: block;
     background-color: #fff;
     border: 1px solid #999;
     border-radius: 6px;
@@ -239,19 +261,38 @@ input[type="file"] {
 .composer-attachments {
 	list-style: none;
 	padding: 0;
-	margin: 0.5rem 0;
+	margin: 0.25rem 0;
+	max-height: min(8rem, 20vh);
+	overflow-y: auto;
 	font-size: 0.875rem;
 }
 .composer-attachments li {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
+	padding: 0.125rem 0;
 }
-.composer-attachments span {
+.composer-attachment-name {
+	flex: 1;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+.composer-attachment-icon {
+	flex-shrink: 0;
+	font-size: 20px;
+	color: var(--gray-07);
+}
+.composer-attachment-size {
+	flex-shrink: 0;
+	color: var(--gray-07);
+	font-variant-numeric: tabular-nums;
+}
+.composer-attachment-summary {
+	color: var(--gray-07);
+	font-size: 0.75rem;
+	margin-bottom: 0.25rem;
 }
 .composer-attachments button {
 	margin-left: auto;

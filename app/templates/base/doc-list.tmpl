@@ -97,32 +97,5 @@
             </ul>
         </div>
 
-        <div id="uploadform">
-            <!--<div class="row">
-                <div class="col-md-6 p-5 mt-5">-->
-                <form class="uploadformform" id="form" aria-busy="false" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-target="#doc-container" hx-swap="outerHTML scroll:bottom">
-                    <div class="upload-layout-container">
-                        <div id="upload-container">
-                            <div id="drop_zone">
-                                <div class="new-post">
-                                    <div class="combined-post-inputs">
-                                        <textarea autofocus class="form-control" id="docUpload-text" placeholder="Write a message…" name="title" rows="3" aria-label="Message"></textarea>
-                                        <input type="file" class="form-control" id="docUpload" name="files" multiple>
-                                        <ul id="docUpload-attachments" class="composer-attachments" aria-label="Draft attachments"></ul>
-                                        <div id="docUpload-error" class="composer-error" role="alert" hidden></div>
-                                        <progress id="progress" value="0" max="100" aria-label="Upload progress" hidden></progress>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="composer-actions">
-                            <button id="upload-button" type="submit" aria-label="Send message" title="Send message" disabled><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
-                            <button id="docUpload-label" type="button" aria-label="Attach files" title="Attach files"><span class="material-symbols-outlined" aria-hidden="true">attach_file</span></button>
-                        </div>
-                    </div>
-                </form>
-                <!--</div>
-            </div>-->
-        </div>
     </div>
 {{ end }}

@@ -2,6 +2,45 @@
     // Keep the existing client-side total limit, shared by picker/drop/paste.
     const maxAttachmentBytes = 10 * 1024 * 1024;
 
+    // Mutable filter controls must not enter HTMX's queue: their workspace
+    // response removes them. Only the persistent composer queues requests.
+    let trayRequest = null;
+    function updateWorkspaceControls() {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"]').forEach(control => {
+            control.disabled = !!trayRequest;
+        });
+    }
+    document.addEventListener("htmx:beforeRequest", event => {
+        if (event.defaultPrevented || !event.target.getAttribute("hx-sync")?.startsWith("#tray-container:")) return;
+        trayRequest = event.detail.xhr;
+        updateWorkspaceControls();
+    });
+    document.addEventListener("htmx:afterRequest", event => {
+        if (event.detail.xhr !== trayRequest) return;
+        trayRequest = null;
+        updateWorkspaceControls();
+    });
+    document.addEventListener("htmx:load", updateWorkspaceControls);
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return `${bytes} B`;
+        const unit = bytes < 1024 * 1024 ? "KiB" : "MiB";
+        const divisor = unit === "KiB" ? 1024 : 1024 * 1024;
+        return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 }).format(bytes / divisor)} ${unit}`;
+    }
+
+    function attachmentIcon(file) {
+        const type = file.type.toLowerCase();
+        const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+        if (type === "application/pdf" || extension === "pdf") return "picture_as_pdf";
+        if (type.startsWith("image/") || /^(png|jpe?g|gif|webp|bmp|tiff?|svg|avif|hei[cf])$/.test(extension)) return "imagesmode";
+        if (type.startsWith("audio/") || /^(mp3|wav|flac|ogg|m4a|aac|mka)$/.test(extension)) return "music_note";
+        if (type.startsWith("video/") || /^(mp4|mkv|webm|mov|avi)$/.test(extension)) return "movie";
+        if (type.startsWith("text/") || /^(txt|md|csv|json|ya?ml|xml|log)$/.test(extension)) return "description";
+        if (/^(zip|tar|gz|tgz|7z|rar)$/.test(extension)) return "folder_zip";
+        return "draft";
+    }
+
     function resizeTextarea(textarea) {
         textarea.style.height = "auto";
         const style = getComputedStyle(textarea);
@@ -19,6 +58,7 @@
         const fileInput = form.querySelector("#docUpload");
         const dropZone = form.querySelector("#drop_zone");
         const attachments = form.querySelector("#docUpload-attachments");
+        const attachmentSummary = form.querySelector("#docUpload-attachment-summary");
         const error = form.querySelector("#docUpload-error");
         const progress = form.querySelector("#progress");
         const sendButton = form.querySelector("#upload-button");
@@ -49,8 +89,17 @@
             attachments.replaceChildren();
             files.forEach((file, index) => {
                 const item = document.createElement("li");
+                const icon = document.createElement("span");
+                icon.className = "material-symbols-outlined composer-attachment-icon";
+                icon.textContent = attachmentIcon(file);
+                icon.setAttribute("aria-hidden", "true");
                 const name = document.createElement("span");
+                name.className = "composer-attachment-name";
                 name.textContent = file.name;
+                name.title = file.name;
+                const size = document.createElement("span");
+                size.className = "composer-attachment-size";
+                size.textContent = formatFileSize(file.size);
                 const remove = document.createElement("button");
                 remove.type = "button";
                 remove.textContent = "Remove";
@@ -61,9 +110,14 @@
                     updateAttachments();
                     showError("");
                 });
-                item.append(name, remove);
+                item.append(icon, name, size, remove);
                 attachments.append(item);
             });
+            attachmentSummary.hidden = !files.length;
+            const totalBytes = files.reduce((total, file) => total + file.size, 0);
+            attachmentSummary.textContent = files.length
+                ? `${files.length} attachment${files.length === 1 ? "" : "s"} · ${formatFileSize(totalBytes)}`
+                : "";
             updateSendState();
         }
 
@@ -78,6 +132,7 @@
             }
             files = combined;
             updateAttachments();
+            attachments.scrollTop = attachments.scrollHeight;
             showError("");
         }
 
@@ -154,13 +209,19 @@
         form.addEventListener("htmx:afterRequest", event => {
             submitting = false;
             form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = false; });
-            updateSendState();
             progress.hidden = true;
-            // A successful swap creates a fresh composer; failed requests keep this draft.
-            if (!event.detail.successful) {
+            if (event.detail.successful) {
+                // Only the message list is swapped; explicitly clear the sent draft.
+                form.reset();
+                files = [];
+                updateAttachments();
+                resizeTextarea(textarea);
+                showError("");
+            } else {
                 showError("Could not send the message. Your draft is still here; try again.");
                 if (form.isConnected) textarea.focus({ preventScroll: true });
             }
+            updateSendState();
         });
         resizeTextarea(textarea);
         updateSendState();
@@ -171,7 +232,7 @@
     document.addEventListener("htmx:afterSettle", event => {
         const request = event.detail.requestConfig;
         if (request?.path !== "/tray/doc-create" || request.verb !== "post" || !event.detail.successful) return;
-        // Wait for the successful replacement to settle, then focus the new input.
+        // Wait for the message list to settle, then return focus to the composer.
         const textarea = document.getElementById("docUpload-text");
         if (textarea) textarea.focus({ preventScroll: true });
     });
@@ -189,7 +250,10 @@
         if (document.visibilityState === "hidden") {
             lastActive = Date.now();
         } else if (Date.now() - lastActive > 15 * 60 * 1000) {
-            location.reload();
+            const form = document.getElementById("form");
+            const hasDraft = form && (form.querySelector("#docUpload-text").value.length ||
+                form.querySelector("#docUpload").files.length || form.getAttribute("aria-busy") === "true");
+            if (!hasDraft) location.reload();
         }
     });
 })();

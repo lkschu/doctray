@@ -13,7 +13,10 @@
 <body>
 <div id="page-container">
     {{ template "base/header.tmpl" }}
-    {{ template "posts/workspace-container.tmpl" . }}
+    <div id="tray-container">
+        {{ template "posts/workspace-container.tmpl" . }}
+        {{ template "base/composer.tmpl" . }}
+    </div>
     {{ template "base/footer.tmpl" }}
 {{ end }}
 

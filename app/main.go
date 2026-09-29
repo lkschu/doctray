@@ -1193,8 +1193,7 @@ func main() {
 				profile_data.Tag_edit = false
 				set_data(profile_data, sub)
 			})
-			c.Header("HX-Refresh", "true")
-			c.String(http.StatusOK, "")
+			render_workspace_container_to_html(c)
 		})
 		router_tray.POST("/tag-create", func(c *gin.Context) {
 			sub := get_uuid(c)

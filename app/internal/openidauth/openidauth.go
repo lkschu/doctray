@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-contrib/sessions"
-	"main/internal/requestlog"
+	"doctray/internal/requestlog"
 
 	"golang.org/x/net/context"
 

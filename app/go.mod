@@ -1,11 +1,13 @@
-module main
+module doctray
 
 go 1.24.1
 
 require (
 	github.com/TJM/gin-gonic-oidcauth v0.3.0
+	github.com/disintegration/imaging v1.6.2
 	github.com/gin-contrib/sessions v1.0.3
 	github.com/gin-gonic/gin v1.10.0
+	golang.org/x/image v0.31.0
 )
 
 require (
@@ -53,7 +55,7 @@ require (
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20210126194326-f9ce19ea3013 // indirect
 	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.24.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	google.golang.org/appengine v1.6.6 // indirect
 	google.golang.org/genproto v0.0.0-20200825200019-8632dd797987 // indirect
 	google.golang.org/grpc v1.31.0 // indirect

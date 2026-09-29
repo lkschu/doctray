@@ -29,10 +29,11 @@ import (
 
 	// oidcauth "github.com/TJM/gin-gonic-oidcauth"
 
-	"main/internal/openidauth"
-	"main/internal/previewbuilder"
-	"main/internal/requestlog"
-	"main/internal/urlutil"
+	"doctray/internal/openidauth"
+	"doctray/internal/previewbuilder"
+	"doctray/internal/requestlog"
+	"doctray/internal/thumbnail"
+	"doctray/internal/urlutil"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -554,10 +555,32 @@ func render_posts_to_html(c *gin.Context) {
 }
 
 type docentry_file struct {
-	Url     string `json:"url"`
-	Name    string `json:"name"`
-	OrgName string `json:"orgname"`
-	Icon    string `json:"icon"`
+	Url          string `json:"url"`
+	Name         string `json:"name"`
+	OrgName      string `json:"orgname"`
+	Icon         string `json:"icon"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+}
+
+func removeUpload(filename string, logger *slog.Logger) {
+	if err := os.Remove(filename); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		// PathError includes the filename and subject; never log it verbatim.
+		logger.Warn("attachment removal failed", "event", "attachment.remove_failed")
+	}
+}
+
+func removeAttachment(directory string, file docentry_file, logger *slog.Logger) {
+	if !strings.HasPrefix(file.Url, "/media/") {
+		return
+	}
+	basename := strings.TrimPrefix(file.Url, "/media/")
+	if basename == "" || basename == "." || basename == ".." || filepath.Base(basename) != basename {
+		logger.Warn("invalid stored attachment path", "event", "attachment.remove_failed")
+		return
+	}
+	filename := filepath.Join(directory, basename)
+	removeUpload(filename, logger)
+	removeUpload(thumbnail.Path(filename), logger)
 }
 
 func (d docentry_file) String() string {
@@ -1240,6 +1263,16 @@ func main() {
 
 			var uploadErr error
 			withProfileLock(sub, func() {
+				logger := requestlog.FromGin(c).With("component", "thumbnail")
+				createdPaths := []string{}
+				persisted := false
+				defer func() {
+					if !persisted {
+						for _, filename := range createdPaths {
+							removeUpload(filename, logger)
+						}
+					}
+				}()
 				profile := get_data(sub)
 				docID := get_data_new_id(&profile.Posts)
 				now := time.Now().UTC()
@@ -1249,15 +1282,27 @@ func main() {
 					for _, file := range files {
 						basename := fmt.Sprintf("%d__%d__%s", docID, now.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
 						filename := DATA_BASE_PATH + "/uploads/" + sub + "/" + basename
+						createdPaths = append(createdPaths, filename)
 						if err := c.SaveUploadedFile(file, filename); err != nil {
 							uploadErr = err
 							return
 						}
-						newPost.Files = append(newPost.Files, docentry_file{Url: "/media/" + basename, OrgName: path.Base(file.Filename), Name: basename})
+						attachment := docentry_file{Url: "/media/" + basename, OrgName: path.Base(file.Filename), Name: basename}
+						thumbnailPath, err := thumbnail.Create(filename)
+						if err == nil {
+							attachment.ThumbnailURL = "/media/" + filepath.Base(thumbnailPath)
+							createdPaths = append(createdPaths, thumbnailPath)
+						} else if errors.Is(err, thumbnail.ErrUnsupported) || errors.Is(err, thumbnail.ErrTooLarge) {
+							logger.Debug("attachment thumbnail skipped", "event", "thumbnail.skipped", "reason", err.Error())
+						} else {
+							logger.Warn("attachment thumbnail failed", "event", "thumbnail.failed")
+						}
+						newPost.Files = append(newPost.Files, attachment)
 					}
 				}
 				profile.Posts = append(profile.Posts, newPost)
 				set_data(profile, sub)
+				persisted = true
 				previewJobs.enqueuePendingPreviews(sub, profile)
 			})
 			if uploadErr != nil {
@@ -1293,10 +1338,7 @@ func main() {
 					return
 				}
 				for _, f := range profile.Posts[to_drop].Files {
-					if strings.HasPrefix(f.Url, "/media/") {
-						basename := strings.TrimPrefix(f.Url, "/media/")
-						os.Remove(DATA_BASE_PATH + "/uploads/" + sub + "/" + basename)
-					}
+					removeAttachment(filepath.Join(DATA_BASE_PATH, "uploads", sub), f, requestlog.FromGin(c))
 				}
 				profile.Posts = slices.Delete(profile.Posts, to_drop, to_drop+1)
 				set_data(profile, sub)

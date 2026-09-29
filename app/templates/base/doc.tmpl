@@ -89,7 +89,14 @@
 		{{ range $file := . }}
 			<a href="{{ $file.Url }}" target="_blank" class="doc-entry-file-download">
 			<div class="doc-entry-file-container debug">
+				{{ if $file.ThumbnailURL }}
+					<div class="doc-entry-file-thumbnail">
+						<img src="{{ $file.ThumbnailURL }}" alt="{{ $file.OrgName }}" width="140" height="52" loading="lazy" decoding="async" onerror="this.hidden=true;this.nextElementSibling.hidden=false">
+						<span class="material-symbols-outlined" hidden>{{ $file.Icon }}</span>
+					</div>
+				{{ else }}
 					<span class="material-symbols-outlined">{{ $file.Icon }}</span>
+				{{ end }}
 					<div class="doc-entry-file-name"><span>{{ $file.OrgName }}</span></div>
 			</div></a>
 		{{end}}

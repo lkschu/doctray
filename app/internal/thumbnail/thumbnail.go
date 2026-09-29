@@ -4,6 +4,7 @@ package thumbnail
 import (
 	"errors"
 	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
@@ -80,7 +81,7 @@ func Create(originalPath string) (string, error) {
 		return "", ErrTooLarge
 	}
 	// Fit preserves aspect ratio and does not upscale images smaller than the box.
-	img = imaging.Fit(img, maxSide, maxSide, imaging.Lanczos)
+	img = imaging.Fit(img, maxSide, maxSide, imaging.Box)
 
 	output, err := os.CreateTemp(filepath.Dir(originalPath), ".thumbnail-*.png")
 	if err != nil {
@@ -88,7 +89,7 @@ func Create(originalPath string) (string, error) {
 	}
 	tempPath := output.Name()
 	defer os.Remove(tempPath)
-	encodeErr := imaging.Encode(output, img, imaging.PNG)
+	encodeErr := imaging.Encode(output, img, imaging.PNG, imaging.PNGCompressionLevel(png.BestSpeed))
 	closeErr := output.Close()
 	if encodeErr != nil {
 		return "", encodeErr

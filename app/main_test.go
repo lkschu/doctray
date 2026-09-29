@@ -160,4 +160,16 @@ func TestComposerTemplate(t *testing.T) {
 	if attribute(elements["upload-button"], "type") != "submit" || attribute(elements["upload-button"], "hx-post") != "" {
 		t.Error("Send must submit the form rather than use a separate request path")
 	}
+	sendDisabled := false
+	for _, attr := range elements["upload-button"].Attr {
+		if attr.Key == "disabled" {
+			sendDisabled = true
+		}
+	}
+	if !sendDisabled {
+		t.Error("Send must start disabled for an empty draft")
+	}
+	if attribute(form, "aria-busy") != "false" {
+		t.Error("composer must start idle")
+	}
 }

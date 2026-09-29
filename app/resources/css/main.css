@@ -189,6 +189,8 @@ body {
     min-height: 5em;
 }
 .upload-layout-container {
+	--composer-action-size: 44px;
+	--composer-action-gap: 0.4rem;
     display: flex;
     flex-direction: row;
     justify-content: space-between;
@@ -227,7 +229,7 @@ input[type="file"] {
     width: 100%;
     box-sizing: border-box;
     font-size: var(--compose-font-size);
-	min-height: 5rem;
+	min-height: calc(2 * var(--composer-action-size) + var(--composer-action-gap));
 	max-height: min(14rem, 35vh);
 	line-height: 1.4;
 	font-family: inherit;
@@ -263,14 +265,14 @@ input[type="file"] {
 .composer-actions {
 	display: flex;
 	flex-direction: column;
-	gap: 0.4rem;
+	gap: var(--composer-action-gap);
 	flex-shrink: 0;
 }
 .composer-actions button {
 	display: grid;
 	place-items: center;
-	width: 2.5rem;
-	height: 2.5rem;
+	width: var(--composer-action-size);
+	height: var(--composer-action-size);
 	padding: 0.3rem;
 	box-sizing: border-box;
 	background-color: #fff;
@@ -278,9 +280,41 @@ input[type="file"] {
 	border-radius: 6px;
 	cursor: pointer;
 }
+.composer-actions button:focus-visible {
+	outline: 4px solid var(--color-01);
+	outline-offset: 2px;
+}
+.composer-attachments button:focus-visible,
+#docUpload-text:focus-visible {
+	outline: 4px solid var(--color-01);
+	/* Keep the ring visible inside the clipped, rounded drop zone. */
+	outline-offset: -4px;
+}
 .composer-actions #upload-button {
 	float: none;
 	padding: 0.3rem;
+}
+.composer-actions button:disabled {
+	cursor: default;
+	opacity: 0.5;
+}
+.composer-actions #upload-button:not(:disabled),
+.composer-actions #upload-button.is-sending {
+	background-color: var(--color-01);
+	border-color: var(--color-01);
+	color: #fff;
+	opacity: 1;
+}
+.composer-actions #upload-button.is-sending .material-symbols-outlined {
+	animation: composer-sending-spin 1s linear infinite;
+}
+@keyframes composer-sending-spin {
+	to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+	.composer-actions #upload-button.is-sending .material-symbols-outlined {
+		animation: none;
+	}
 }
 #upload-button {
     float:right;

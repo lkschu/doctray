@@ -21,9 +21,21 @@
         const attachments = form.querySelector("#docUpload-attachments");
         const error = form.querySelector("#docUpload-error");
         const progress = form.querySelector("#progress");
+        const sendButton = form.querySelector("#upload-button");
+        const sendIcon = sendButton.querySelector(".material-symbols-outlined");
         let files = [];
         let submitting = false;
         let dragDepth = 0;
+
+        function updateSendState() {
+            sendButton.disabled = submitting || (!textarea.value.trim() && !files.length);
+            sendButton.classList.toggle("is-sending", submitting);
+            sendIcon.textContent = submitting ? "progress_activity" : "send";
+            const label = submitting ? "Sending message…" : "Send message";
+            sendButton.setAttribute("aria-label", label);
+            sendButton.title = label;
+            form.setAttribute("aria-busy", String(submitting));
+        }
 
         function showError(message) {
             error.textContent = message;
@@ -52,6 +64,7 @@
                 item.append(name, remove);
                 attachments.append(item);
             });
+            updateSendState();
         }
 
         function addFiles(incoming) {
@@ -70,7 +83,10 @@
 
         form.querySelector("#docUpload-label").addEventListener("click", () => fileInput.click());
         fileInput.addEventListener("change", () => addFiles(Array.from(fileInput.files)));
-        textarea.addEventListener("input", () => resizeTextarea(textarea));
+        textarea.addEventListener("input", () => {
+            resizeTextarea(textarea);
+            updateSendState();
+        });
         textarea.addEventListener("keydown", event => {
             if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
                 event.preventDefault();
@@ -89,6 +105,7 @@
             const text = event.clipboardData.getData("text/plain");
             if (text) textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, "end");
             resizeTextarea(textarea);
+            updateSendState();
         });
 
         function isFileDrag(event) {
@@ -127,6 +144,7 @@
             showError("");
             submitting = true;
             form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = true; });
+            updateSendState();
             progress.value = 0;
             progress.hidden = false;
         });
@@ -136,15 +154,27 @@
         form.addEventListener("htmx:afterRequest", event => {
             submitting = false;
             form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = false; });
+            updateSendState();
             progress.hidden = true;
             // A successful swap creates a fresh composer; failed requests keep this draft.
-            if (!event.detail.successful) showError("Could not send the message. Your draft is still here; try again.");
+            if (!event.detail.successful) {
+                showError("Could not send the message. Your draft is still here; try again.");
+                if (form.isConnected) textarea.focus({ preventScroll: true });
+            }
         });
         resizeTextarea(textarea);
+        updateSendState();
     }
 
     document.addEventListener("DOMContentLoaded", initializeComposer);
     document.addEventListener("htmx:load", initializeComposer);
+    document.addEventListener("htmx:afterSettle", event => {
+        const request = event.detail.requestConfig;
+        if (request?.path !== "/tray/doc-create" || request.verb !== "post" || !event.detail.successful) return;
+        // Wait for the successful replacement to settle, then focus the new input.
+        const textarea = document.getElementById("docUpload-text");
+        if (textarea) textarea.focus({ preventScroll: true });
+    });
     window.addEventListener("resize", () => {
         const textarea = document.getElementById("docUpload-text");
         if (textarea) resizeTextarea(textarea);

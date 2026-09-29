@@ -100,7 +100,7 @@
         <div id="uploadform">
             <!--<div class="row">
                 <div class="col-md-6 p-5 mt-5">-->
-                <form class="uploadformform" id="form" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-target="#doc-container" hx-swap="outerHTML scroll:bottom">
+                <form class="uploadformform" id="form" aria-busy="false" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-target="#doc-container" hx-swap="outerHTML scroll:bottom">
                     <div class="upload-layout-container">
                         <div id="upload-container">
                             <div id="drop_zone">
@@ -116,7 +116,7 @@
                             </div>
                         </div>
                         <div class="composer-actions">
-                            <button id="upload-button" type="submit" aria-label="Send message" title="Send message"><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
+                            <button id="upload-button" type="submit" aria-label="Send message" title="Send message" disabled><span class="material-symbols-outlined" aria-hidden="true">send</span></button>
                             <button id="docUpload-label" type="button" aria-label="Attach files" title="Attach files"><span class="material-symbols-outlined" aria-hidden="true">attach_file</span></button>
                         </div>
                     </div>

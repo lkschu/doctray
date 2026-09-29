@@ -1,159 +1,165 @@
-// const dropzone = document.getElementById('dropzone');
+(() => {
+    // Keep the existing client-side total limit, shared by picker/drop/paste.
+    const maxAttachmentBytes = 10 * 1024 * 1024;
 
-// ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-// 	dropzone.addEventListener(eventName, preventDefaults, false);
-// });
+    function resizeTextarea(textarea) {
+        textarea.style.height = "auto";
+        const style = getComputedStyle(textarea);
+        const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+        textarea.style.height = `${textarea.scrollHeight + borders}px`;
+        textarea.style.overflowY = textarea.scrollHeight > textarea.clientHeight ? "auto" : "hidden";
+    }
 
-// function preventDefaults (evt) {
-// 	evt.preventDefault();
-// 	evt.stopPropagation();
-// }
+    function initializeComposer() {
+        const form = document.getElementById("form");
+        if (!form || form.dataset.composerReady) return;
+        form.dataset.composerReady = "true";
 
-// ['dragenter', 'dragover'].forEach(eventName => {
-// 	dropzone.addEventListener(eventName, markzone, false);
-// });
+        const textarea = form.querySelector("#docUpload-text");
+        const fileInput = form.querySelector("#docUpload");
+        const dropZone = form.querySelector("#drop_zone");
+        const attachments = form.querySelector("#docUpload-attachments");
+        const error = form.querySelector("#docUpload-error");
+        const progress = form.querySelector("#progress");
+        let files = [];
+        let submitting = false;
+        let dragDepth = 0;
 
-// ['dragleave', 'drop'].forEach(eventName => {
-// 	dropzone.addEventListener(eventName, unmarkzone, false);
-// });
+        function showError(message) {
+            error.textContent = message;
+            error.hidden = !message;
+        }
 
+        function updateAttachments() {
+            const transfer = new DataTransfer();
+            files.forEach(file => transfer.items.add(file));
+            fileInput.files = transfer.files;
+            attachments.replaceChildren();
+            files.forEach((file, index) => {
+                const item = document.createElement("li");
+                const name = document.createElement("span");
+                name.textContent = file.name;
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.textContent = "Remove";
+                remove.setAttribute("aria-label", `Remove ${file.name}`);
+                remove.addEventListener("click", () => {
+                    if (submitting) return;
+                    files.splice(index, 1);
+                    updateAttachments();
+                    showError("");
+                });
+                item.append(name, remove);
+                attachments.append(item);
+            });
+        }
 
-// function markzone(evt) {
-// 	dropzone.classList.add('markzone');
-// }
+        function addFiles(incoming) {
+            if (submitting) return;
+            const combined = [...files, ...incoming];
+            if (combined.reduce((total, file) => total + file.size, 0) > maxAttachmentBytes) {
+                showError("Attachments must total 10 MiB or less.");
+                // The picker replaced its FileList; restore the accepted draft.
+                updateAttachments();
+                return;
+            }
+            files = combined;
+            updateAttachments();
+            showError("");
+        }
 
-// function unmarkzone(evt) {
-// 	dropzone.classList.remove('markzone');
-// }
-
-// dropzone.addEventListener('drop', function (evt) {
-// 	let dt = evt.dataTransfer;
-// 	console.log ("dt", dt);
-// 	let files = dt.files;
-// 	handleFiles(files);
-// });
-
-// function handleFiles(files) {
-// 	([...files]).forEach(uploadFile);
-// 	([...files]).forEach(previewFile);
-// }
-//
-
-
-
-
-
-/// src: https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API/File_drag_and_drop
-function dropHandler(ev) {
-    console.log("File(s) dropped");
-
-    // Prevent default behavior (Prevent file from being opened)
-    ev.preventDefault();
-    dragLeaveHandler(ev)
-
-    if (ev.dataTransfer.items) {
-        // Use DataTransferItemList interface to access the file(s)
-        [...ev.dataTransfer.items].forEach((item, i) => {
-            // If dropped items aren't files, reject them
-            if (item.kind === "file") {
-                const file = item.getAsFile();
-                console.log(`… file[${i}].name = ${file.name}`);
+        form.querySelector("#docUpload-label").addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", () => addFiles(Array.from(fileInput.files)));
+        textarea.addEventListener("input", () => resizeTextarea(textarea));
+        textarea.addEventListener("keydown", event => {
+            if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+                event.preventDefault();
+                if (!submitting) form.requestSubmit();
             }
         });
+        textarea.addEventListener("paste", event => {
+            const images = Array.from(event.clipboardData?.items || [])
+                .filter(item => item.kind === "file" && item.type.startsWith("image/"))
+                .map(item => item.getAsFile())
+                .filter(Boolean);
+            if (!images.length) return; // Leave ordinary text paste to the browser.
+            event.preventDefault();
+            if (submitting) return;
+            addFiles(images);
+            const text = event.clipboardData.getData("text/plain");
+            if (text) textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, "end");
+            resizeTextarea(textarea);
+        });
 
-        const items = ev.dataTransfer.items;
-        var files = [];
-        for (let i = 0; i<items.length; i++){
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                if (file) {
-                    files.push(file);
-                }
+        function isFileDrag(event) {
+            return Array.from(event.dataTransfer?.types || []).includes("Files");
+        }
+        dropZone.addEventListener("dragenter", event => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            dragDepth += 1;
+            dropZone.classList.add("markzone");
+        });
+        dropZone.addEventListener("dragover", event => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = submitting ? "none" : "copy";
+        });
+        dropZone.addEventListener("dragleave", () => {
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (!dragDepth) dropZone.classList.remove("markzone");
+        });
+        dropZone.addEventListener("drop", event => {
+            dragDepth = 0;
+            dropZone.classList.remove("markzone");
+            const incoming = Array.from(event.dataTransfer?.files || []);
+            if (!incoming.length) return; // Preserve ordinary text/link drops.
+            event.preventDefault();
+            addFiles(incoming);
+        });
+
+        form.addEventListener("htmx:beforeRequest", event => {
+            if (submitting || (!textarea.value.trim() && !files.length)) {
+                event.preventDefault();
+                if (!submitting) showError("Write a message or attach a file first.");
+                return;
             }
-        }
-        console.log(`files(${files.length}): ${files}`)
-        console.log(`Types: ${ev.dataTransfer.types}`)
-
-        // var input = document.querySelector('input[type="file"]')
-
-        var data = new FormData()
-        for (let i = 0; i<items.length; i++) {
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                if (file) {
-                    data.append('files', file)
-                }
-            } else {
-                items[i].getAsString((str)=> { console.log(`nofile(${i}): ${str}`) })
-            }
-
-        }
-        const text_input = document.getElementById('docUpload-text').value;
-        data.append('title', text_input)
-        // htmx.ajax('POST', '/doc-create', {target:"#doc-container", swap:'outerHTML'}, data)
-        console.log(`source: ${ev.currentTarget}`)
-        htmx.ajax('POST', '/tray/doc-create', {values: {files:data.getAll('files'),title:text_input}, source:ev.currentTarget, target:"#doc-container", swap:'outerHTML scroll:bottom'})
-
-        //// const response = fetch('/doc-create', {
-        ////     method: 'POST',
-        ////     body: data
-        //// })
-        //// // response.then(response => response.text()).then(text => { console.log('Response as string:', text) }).catch(error => { console.error('Fetch error:', error) });
-        //// response.then(response => response.text()).then(text => { htmx.swap("#doc-container", text, {swapStyle: 'outerHTML scroll:bottom'}) }).catch(error => { console.error('Fetch error:', error) });
-        // window.location.reload() // Reload page after successfull upload ( because i am to stupid to copy htmx ajax behavior )
-    }
-    /// INFO: dataTransfer.files is deprecated
-    ///else {
-    ///    // Use DataTransfer interface to access the file(s)
-    ///    [...ev.dataTransfer.files].forEach((file, i) => {
-    ///        console.log(`… file[${i}].name = ${file.name}`);
-    ///    });
-    ///}
-}
-
-function dragLeaveHandler(ev) {
-  var element = document.getElementById("drop_zone");
-    element.classList.remove("markzone")
-}
-function dragOverHandler(ev) {
-  console.log("File(s) in drop zone");
-  var element = document.getElementById("drop_zone");
-    element.classList.add("markzone")
-
-  // Prevent default behavior (Prevent file from being opened)
-  ev.preventDefault();
-}
-function get_file_names(){
-    document.getElementById("docUpload").click()
-}
-
-function sub_uploadbutton_change(obj) {
-    var file = obj.value;
-    console.log('f:', file)
-    var files = obj.files;
-    console.log('ff:', files)
-
-    var buttontext = ""
-    if (!files) {
-        return
+            showError("");
+            submitting = true;
+            form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = true; });
+            progress.value = 0;
+            progress.hidden = false;
+        });
+        form.addEventListener("htmx:xhr:progress", event => {
+            if (event.detail.total > 0) progress.value = event.detail.loaded / event.detail.total * 100;
+        });
+        form.addEventListener("htmx:afterRequest", event => {
+            submitting = false;
+            form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = false; });
+            progress.hidden = true;
+            // A successful swap creates a fresh composer; failed requests keep this draft.
+            if (!event.detail.successful) showError("Could not send the message. Your draft is still here; try again.");
+        });
+        resizeTextarea(textarea);
     }
 
-    if (files.length > 1) {
-        buttontext = "(" + files.length + "):"
-        for (var i = 0; i<files.length; i++) {
-            buttontext = buttontext + " " + files[i].name + ";"
+    document.addEventListener("DOMContentLoaded", initializeComposer);
+    document.addEventListener("htmx:load", initializeComposer);
+    window.addEventListener("resize", () => {
+        const textarea = document.getElementById("docUpload-text");
+        if (textarea) resizeTextarea(textarea);
+    });
+    window.addEventListener("load", () => {
+        const container = document.getElementById("doc-container");
+        if (container) container.scrollTop = container.scrollHeight;
+    });
+
+    let lastActive = Date.now();
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            lastActive = Date.now();
+        } else if (Date.now() - lastActive > 15 * 60 * 1000) {
+            location.reload();
         }
-    } else {
-        buttontext = files[0].name
-    }
-
-    console.log('fff:', buttontext)
-    // var fileName = file.split("\\");
-    // document.getElementById("docUpload-label").innerHTML = fileName[fileName.length - 1];
-    document.getElementById("docUpload-label").innerHTML = buttontext;
-
-    // document.myForm.submit();
-    event.preventDefault();
-}
-
-
+    });
+})();

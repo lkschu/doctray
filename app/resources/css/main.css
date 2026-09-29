@@ -165,7 +165,7 @@ body {
     /* margin: 1vh auto; */
     /* float: right; */
     /* max-width: 70em; */
-    min-width: 25em;
+    min-width: 0;
     height: 70vh;
     /* max-height: 80em; */
     border-radius: 0 0 1em 1em;
@@ -192,6 +192,8 @@ body {
     display: flex;
     flex-direction: row;
     justify-content: space-between;
+	align-items: flex-start;
+	gap: 0.5rem;
 }
 .combined-post-inputs {
     background-color: var(--tray-bg);
@@ -199,6 +201,8 @@ body {
     /* padding: 2px; */
 }
 #drop_zone {
+	position: relative;
+	border-radius: 6px;
     overflow: hidden;
     /* width: 100%; */
     /* white-space: nowrap; */
@@ -210,7 +214,8 @@ input[type="file"] {
     font-style: italic;
 }
 #upload-container{
-    width: var(--width-compose-message);
+	flex: 1;
+	min-width: 0;
 }
 #docUpload-text {
     background-color: #fff;
@@ -222,24 +227,60 @@ input[type="file"] {
     width: 100%;
     box-sizing: border-box;
     font-size: var(--compose-font-size);
-    min-height: 4rem;
+	min-height: 5rem;
+	max-height: min(14rem, 35vh);
+	line-height: 1.4;
+	font-family: inherit;
     padding: 6px 12px;
-    cursor: pointer;
+    cursor: text;
 }
-#docUpload-label {
-    margin-top: 8px;
-    font-size: 14px;
-    background-color: #fff;
-    border: 1px solid #999;
-    border-radius: 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    width: 100%;
-    box-sizing: border-box;
-    /* display: inline-block; */
-    padding: 4px 12px;
-    cursor: pointer;
+.composer-attachments {
+	list-style: none;
+	padding: 0;
+	margin: 0.5rem 0;
+	font-size: 0.875rem;
+}
+.composer-attachments li {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.composer-attachments span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.composer-attachments button {
+	margin-left: auto;
+	flex-shrink: 0;
+}
+.composer-error {
+	color: #a32020;
+	font-size: 0.875rem;
+	margin-top: 0.5rem;
+}
+.composer-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	flex-shrink: 0;
+}
+.composer-actions button {
+	display: grid;
+	place-items: center;
+	width: 2.5rem;
+	height: 2.5rem;
+	padding: 0.3rem;
+	box-sizing: border-box;
+	background-color: #fff;
+	border: 1px solid #999;
+	border-radius: 6px;
+	cursor: pointer;
+}
+.composer-actions #upload-button {
+	float: none;
+	padding: 0.3rem;
 }
 #upload-button {
     float:right;
@@ -260,10 +301,17 @@ textarea[name=title] {
 /*     flex-direction: row; */
 /* } */
 
-.markzone {
-    border-color: black;
-    border-style: dashed;
-    border-width: 2px;
+#drop_zone.markzone {
+	outline: 2px dashed var(--color-01);
+	outline-offset: -2px;
+}
+#drop_zone.markzone::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	background-color: rgb(51 85 153 / 22%);
+	pointer-events: none;
 }
 
 

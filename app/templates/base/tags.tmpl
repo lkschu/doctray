@@ -27,6 +27,11 @@
                 <span>Starred only</span>
                 <span class="tag-filter-selection" aria-hidden="true">✓</span>
             </button>
+            {{ if .HasActiveFilters }}
+            <button class="tag-manage-button" id="clear-filters-button" type="button"
+                hx-post="/tray/filters-clear" hx-sync="#tray-container:drop"
+                hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom">Clear filters</button>
+            {{ end }}
             <button class="tag-manage-button" id="tags-edit-button" type="button"
                 hx-post="/tray/tag-edit" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
         </div>

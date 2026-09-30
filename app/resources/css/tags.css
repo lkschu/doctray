@@ -87,7 +87,8 @@
     outline-offset: 2px;
 }
 .tag-filter-chip:disabled,
-.tag-star-filter:disabled {
+.tag-star-filter:disabled,
+.tag-manage-button:disabled {
     opacity: 0.6;
     cursor: default;
 }

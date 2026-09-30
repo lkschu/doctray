@@ -642,6 +642,25 @@ type profile_data struct {
 	Only_favorites bool            `json:"only_starred"`
 }
 
+func (p profile_data) HasActiveFilters() bool {
+	if p.Only_favorites {
+		return true
+	}
+	for _, tag := range p.Tags {
+		if tag.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *profile_data) ClearFilters() {
+	p.Only_favorites = false
+	for i := range p.Tags {
+		p.Tags[i].Enabled = false
+	}
+}
+
 func (p *profile_data) normalize_tag_nrs() {
 	for i, _ := range p.Tags {
 		p.Tags[i].Nr = fmt.Sprint(i)
@@ -1153,6 +1172,15 @@ func main() {
 			withProfileLock(sub, func() {
 				profile := get_data(sub)
 				profile.Only_favorites = !profile.Only_favorites
+				set_data(profile, sub)
+			})
+			render_workspace_container_to_html(c)
+		})
+		router_tray.POST("/filters-clear", func(c *gin.Context) {
+			sub := get_uuid(c)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				profile.ClearFilters()
 				set_data(profile, sub)
 			})
 			render_workspace_container_to_html(c)

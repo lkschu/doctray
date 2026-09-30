@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -273,13 +274,20 @@ func TestTagFilterTemplate(t *testing.T) {
 		{ID: "unnamed-id", Nr: "2", Color: "#335599"},
 		{ID: "whitespace-id", Nr: "3", Name: " \t ", Color: "#335599"},
 	}
+	inactiveTags := append([]tag(nil), tags...)
+	for i := range inactiveTags {
+		inactiveTags[i].Enabled = false
+	}
 	for _, test := range []struct {
 		name    string
 		profile profile_data
 		starred string
+		clear   bool
 	}{
-		{name: "tags", profile: profile_data{Tags: tags}, starred: "false"},
-		{name: "starred", profile: profile_data{Tags: tags, Only_favorites: true}, starred: "true"},
+		{name: "tags", profile: profile_data{Tags: tags}, starred: "false", clear: true},
+		{name: "starred", profile: profile_data{Tags: tags, Only_favorites: true}, starred: "true", clear: true},
+		{name: "inactive tags", profile: profile_data{Tags: inactiveTags}, starred: "false"},
+		{name: "starred without tags", profile: profile_data{Only_favorites: true}, starred: "true", clear: true},
 		{name: "no tags", starred: "false"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -325,11 +333,12 @@ func TestTagFilterTemplate(t *testing.T) {
 				t.Error("starred filter must have a visible Starred only label")
 			}
 			wantPressed := map[string]string{"star-filter-button": test.starred}
-			if len(test.profile.Tags) > 0 {
-				wantPressed["select-tag-0"] = "true"
-				wantPressed["select-tag-1"] = "false"
-				wantPressed["select-tag-2"] = "false"
-				wantPressed["select-tag-3"] = "false"
+			for _, tag := range test.profile.Tags {
+				pressed := "false"
+				if tag.Enabled {
+					pressed = "true"
+				}
+				wantPressed["select-tag-"+tag.Nr] = pressed
 			}
 			for id, pressed := range wantPressed {
 				node := elements[id]
@@ -341,6 +350,18 @@ func TestTagFilterTemplate(t *testing.T) {
 				}
 				if attribute(node, "hx-target") != "#workspace-container" || attribute(node, "hx-sync") != "#tray-container:drop" {
 					t.Errorf("%s must retain workspace-only, send-safe updates", id)
+				}
+			}
+			clear := elements["clear-filters-button"]
+			if (clear != nil) != test.clear {
+				t.Errorf("Clear filters visible = %t, want %t", clear != nil, test.clear)
+			}
+			if clear != nil {
+				if clear.Data != "button" || attribute(clear, "type") != "button" || attribute(clear, "hx-post") != "/tray/filters-clear" {
+					t.Error("Clear filters must use its single reset endpoint without submitting a form")
+				}
+				if attribute(clear, "hx-target") != "#workspace-container" || attribute(clear, "hx-sync") != "#tray-container:drop" || attribute(clear, "hx-swap") != "outerHTML scroll:#doc-container:bottom" {
+					t.Error("Clear filters must retain workspace-only, send-safe updates")
 				}
 			}
 			if len(test.profile.Tags) > 0 {
@@ -365,6 +386,51 @@ func TestTagFilterTemplate(t *testing.T) {
 			}
 			if attribute(manage, "hx-post") != "/tray/tag-edit" || attribute(manage, "hx-target") != "#tag-container" {
 				t.Error("Manage tags must open the existing editor without replacing the composer")
+			}
+		})
+	}
+}
+
+func TestClearFilters(t *testing.T) {
+	if (profile_data{}).HasActiveFilters() {
+		t.Error("empty profiles must have no active filters")
+	}
+	for _, test := range []struct {
+		name    string
+		tag     bool
+		starred bool
+	}{
+		{name: "inactive"},
+		{name: "tags only", tag: true},
+		{name: "starred only", starred: true},
+		{name: "both", tag: true, starred: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profile := profile_data{
+				Only_favorites: test.starred,
+				Tag_edit:       true,
+				Tags: []tag{
+					{ID: "reading", Nr: "0", Name: "Reading", Sym: "📚", Color: "#335599", Enabled: test.tag},
+					{ID: "work", Nr: "1", Name: "Work", Color: "#ffffff", Enabled: test.tag},
+				},
+				Posts: []post{{DocID: 1, Title: "Keep this message", Starred: true, Tags: []string{"reading"}}},
+			}
+			if profile.HasActiveFilters() != (test.tag || test.starred) {
+				t.Error("active filter detection does not match tag/starred state")
+			}
+			want := profile
+			want.Only_favorites = false
+			want.Tags = append([]tag(nil), profile.Tags...)
+			want.Posts = append([]post(nil), profile.Posts...)
+			want.Posts[0].Tags = append([]string(nil), profile.Posts[0].Tags...)
+			for i := range want.Tags {
+				want.Tags[i].Enabled = false
+			}
+			for i := 0; i < 2; i++ {
+				profile.ClearFilters()
+				if profile.HasActiveFilters() || !reflect.DeepEqual(profile, want) {
+					t.Error("clearing filters must be idempotent and preserve tag definitions, posts, and editor state")
+				}
 			}
 		})
 	}

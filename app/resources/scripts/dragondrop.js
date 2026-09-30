@@ -6,7 +6,7 @@
     // response removes them. Only the persistent composer queues requests.
     let trayRequest = null;
     function updateWorkspaceControls() {
-        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"]').forEach(control => {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tag-editor-form button').forEach(control => {
             control.disabled = !!trayRequest;
         });
     }
@@ -21,6 +21,10 @@
         updateWorkspaceControls();
     });
     document.addEventListener("htmx:load", updateWorkspaceControls);
+    document.addEventListener("click", event => {
+        const remove = event.target.closest(".tag-editor-remove");
+        if (remove && !remove.disabled) remove.closest(".tag-editor-row").remove();
+    });
 
     function formatFileSize(bytes) {
         if (bytes < 1024) return `${bytes} B`;

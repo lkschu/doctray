@@ -53,55 +53,41 @@
 {{ end }}
 
 {{ define "base/tags-edit.tmpl" }}
-    <form>
-        <div id="tag-container-tag-list">
-            <ul id="tag-container-ul">
-                {{ range $tag := .Tags }}
-                    {{ template "base/tagedit.tmpl" $tag }}
-                {{ end }}
-            </ul>
-
-            <div id="tag-container-edit-buttons">
-                <button
-                    id="upload-button"
-                    hx-encoding="multipart/form-data"
-                    hx-post="/tray/tag-create"
-                    hx-swap="outerHTML"
-                    hx-target="#tag-container"
-                    type="submit" class="btn btn-primary">New Tag</button>
-                <button
-                    id="upload-button"
-                    hx-encoding="multipart/form-data"
-                    hx-post="/tray/tag-apply"
-                    hx-sync="#tray-container:drop"
-                    hx-target="#workspace-container"
-                    hx-swap="outerHTML scroll:#doc-container:bottom"
-                    type="submit" class="btn btn-primary">Apply</button>
+    <form id="tag-editor-form" hx-post="/tray/tag-apply" hx-encoding="multipart/form-data"
+        hx-sync="#tray-container:drop" hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom"
+        hx-disabled-elt="#tag-editor-form button, #tag-editor-form input">
+        <div class="tag-editor-toolbar">
+            <h2>Manage tags</h2>
+            <div class="tag-editor-actions">
+                <button class="tag-manage-button" id="tag-add-button" type="button"
+                    hx-post="/tray/tag-create" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Add tag</button>
+                <button class="tag-manage-button tag-editor-save" id="tag-save-button" type="submit">Save changes</button>
+                <button class="tag-manage-button" id="tag-cancel-button" type="button"
+                    hx-post="/tray/tag-cancel" hx-params="none" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Cancel</button>
             </div>
-
         </div>
+        {{ if .Tags }}
+        <div class="tag-editor-columns" aria-hidden="true"><span>Emoji</span><span>Name</span><span>Colour</span><span></span></div>
+        {{ else }}
+        <p class="tag-editor-empty">No tags yet. Add one to get started.</p>
+        {{ end }}
+        <ul id="tag-editor-list" aria-label="Editable tags">
+            {{ range $tag := .Tags }}
+                {{ template "base/tagedit.tmpl" $tag }}
+            {{ end }}
+        </ul>
     </form>
 {{ end }}
 
 {{ define "base/tagedit.tmpl" }}
-    <li id="tag-li-{{ .Nr }}">
-        <div class="tag-container-tag tag-edit">
-            <div class="hidden"> <input type="text"  value="{{ .ID }}"     name="tag[{{ .Nr }}]tag_id" class="input-hidden" readonly="readonly"></div>
-
-            <div class="tag-name-wrapper tooltip"> <input type="text"  value="{{ .Name }}"  name="tag[{{ .Nr }}]name">
-                    <div class="tooltiptext-tagedit">tag name</div>
-            </div>
-            <div class="tag-color-wrapper tooltip"> <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}">
-                    <div class="tooltiptext-tagedit">tag color</div>
-            </div>
-            <div class="tag-symbol-color-container">
-                <div class="tag-symbol-wrapper tooltip"> <input type="text"  value="{{ .Sym }}"     name="tag[{{ .Nr }}]symbol" maxlength="2" class="tag-symbol">
-                    <div class="tooltiptext-tagedit">tag symbol</div>
-                </div>
-                <div class="tag-button-remove-wrapper tooltip"><button class="tag-button-remove" hx-post="/tray/ping" hx-swap="delete" hx-target="#tag-li-{{ .Nr }}">🗑️</button>
-                    <div class="tooltiptext-tagedit">delete tag</div>
-                </div>
-            </div>
-        <div>
+    <li class="tag-editor-row" id="tag-li-{{ .Nr }}">
+        <input type="hidden" name="tag[{{ .Nr }}]tag_id" value="{{ .ID }}">
+        <input type="text" class="tag-editor-symbol" id="tag-symbol-{{ .Nr }}" name="tag[{{ .Nr }}]symbol"
+            value="{{ .Sym }}" aria-label="Emoji for {{ .DisplayName }}">
+        <input type="text" id="tag-name-{{ .Nr }}" name="tag[{{ .Nr }}]name"
+            value="{{ .Name }}" placeholder="Tag name" aria-label="Name for {{ .DisplayName }}">
+        <input type="color" id="tag-color-{{ .Nr }}" name="tag[{{ .Nr }}]color"
+            value="{{ if .Color }}{{ .Color }}{{ else }}#777777{{ end }}" aria-label="Colour for {{ .DisplayName }}">
+        <button class="tag-editor-remove" type="button" aria-label="Remove {{ .DisplayName }}" title="Remove tag">×</button>
     </li>
 {{ end }}

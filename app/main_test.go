@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -433,5 +434,128 @@ func TestClearFilters(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTagsFromMultiform(t *testing.T) {
+	saved := []tag{{ID: "reading", Enabled: true}, {ID: "removed", Enabled: true}}
+	form := &multipart.Form{Value: map[string][]string{
+		"tag[0]tag_id": {"reading"},
+		"tag[0]name":   {" Research & <notes>\r "},
+		"tag[0]symbol": {"👩🏽‍💻"},
+		"tag[0]color":  {"#335599"},
+		// A gap represents a locally removed row; new tags start unselected.
+		"tag[2]tag_id": {"new-tag"},
+		"tag[2]name":   {"New tag"},
+		"tag[2]symbol": {""},
+		"tag[2]color":  {"#ffffff"},
+	}}
+	want := []tag{
+		{ID: "reading", Nr: "0", Name: "Research & <notes>", Sym: "👩🏽‍💻", Color: "#335599", Enabled: true},
+		{ID: "new-tag", Nr: "2", Name: "New tag", Color: "#ffffff"},
+	}
+	if got := tagsFromMultiform(form, saved); !reflect.DeepEqual(got, want) {
+		t.Errorf("parsed tags = %#v, want %#v", got, want)
+	}
+	if !saved[0].Enabled || !saved[1].Enabled {
+		t.Error("parsing a draft must not modify saved tags")
+	}
+	if got := tagsFromMultiform(&multipart.Form{Value: map[string][]string{}}, saved); len(got) != 0 {
+		t.Error("removing all rows must produce an empty tag list")
+	}
+}
+
+func TestTagEditorTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/tags.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := []tag{
+		{ID: "reading", Nr: "0", Name: "Research & <notes>", Sym: "👩🏽‍💻", Color: "#335599", Enabled: true},
+		{ID: "work", Nr: "1", Name: "Work", Color: "#ffffff"},
+	}
+	for _, draft := range [][]tag{tags, nil} {
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, "base/tags.tmpl", profile_data{Tag_edit: true, Tags: draft}); err != nil {
+			t.Fatal(err)
+		}
+		document, err := htmlparser.Parse(&rendered)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attribute := func(node *htmlparser.Node, name string) string {
+			for _, attr := range node.Attr {
+				if attr.Key == name {
+					return attr.Val
+				}
+			}
+			return ""
+		}
+		elements := make(map[string]*htmlparser.Node)
+		form := &multipart.Form{Value: make(map[string][]string)}
+		rows, removeButtons := 0, 0
+		var visit func(*htmlparser.Node)
+		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.ElementNode {
+				if id := attribute(node, "id"); id != "" {
+					if elements[id] != nil {
+						t.Errorf("duplicate editor element ID %q", id)
+					}
+					elements[id] = node
+				}
+				if node.Data == "input" {
+					form.Value[attribute(node, "name")] = []string{attribute(node, "value")}
+					if attribute(node, "type") != "hidden" && attribute(node, "aria-label") == "" {
+						t.Error("editable inputs need accessible labels")
+					}
+					if attribute(node, "maxlength") != "" {
+						t.Error("emoji inputs must not truncate multi-codepoint emoji")
+					}
+				}
+				if attribute(node, "class") == "tag-editor-row" {
+					rows++
+				}
+				if attribute(node, "class") == "tag-editor-remove" {
+					removeButtons++
+					if attribute(node, "type") != "button" || attribute(node, "hx-post") != "" || attribute(node, "aria-label") == "" {
+						t.Error("Remove must be a labelled local action, not a request or form submission")
+					}
+				}
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				visit(child)
+			}
+		}
+		visit(document)
+		for _, id := range []string{"tag-editor-form", "tag-add-button", "tag-save-button", "tag-cancel-button"} {
+			if elements[id] == nil {
+				t.Fatalf("editor element %q missing", id)
+			}
+		}
+		editor := elements["tag-editor-form"]
+		if attribute(editor, "hx-post") != "/tray/tag-apply" || attribute(editor, "hx-encoding") != "multipart/form-data" || attribute(editor, "hx-target") != "#workspace-container" || attribute(editor, "hx-sync") != "#tray-container:drop" {
+			t.Error("Save must submit one send-safe multipart request and update only the workspace")
+		}
+		if attribute(elements["tag-save-button"], "type") != "submit" {
+			t.Error("Save changes must submit the form, including keyboard submission")
+		}
+		for id, endpoint := range map[string]string{"tag-add-button": "/tray/tag-create", "tag-cancel-button": "/tray/tag-cancel"} {
+			node := elements[id]
+			if attribute(node, "type") != "button" || attribute(node, "hx-post") != endpoint || attribute(node, "hx-target") != "#tag-container" || attribute(node, "hx-sync") != "#tray-container:drop" {
+				t.Errorf("%s must use its editor-only, send-safe action without submitting Save", id)
+			}
+		}
+		if attribute(elements["tag-cancel-button"], "hx-params") != "none" {
+			t.Error("Cancel must not send unapplied editor fields")
+		}
+		if rows != len(draft) || removeButtons != len(draft) {
+			t.Error("each tag must have one row and one removal control")
+		}
+		if parsed := tagsFromMultiform(form, tags); len(draft) > 0 && !reflect.DeepEqual(parsed, draft) {
+			t.Error("editor round-trips must preserve names, emoji, IDs and filter selections without repeated escaping")
+		}
+		if len(draft) == 0 && !strings.Contains(rendered.String(), "No tags yet") {
+			t.Error("empty editors must explain how to add a tag")
+		}
 	}
 }

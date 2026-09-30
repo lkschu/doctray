@@ -617,6 +617,33 @@ func (t tag) DisplayName() string {
 	}
 	return "Unnamed tag"
 }
+
+func tagsFromMultiform(form *multipart.Form, saved []tag) []tag {
+	enabled := make(map[string]bool, len(saved))
+	for _, tag := range saved {
+		enabled[tag.ID] = tag.Enabled
+	}
+	field := func(index int, name string) string {
+		values := form.Value[fmt.Sprintf("tag[%d]%s", index, name)]
+		if len(values) == 0 {
+			return ""
+		}
+		// These are plain strings; Go templates escape them at render time.
+		return strings.TrimSpace(strings.ReplaceAll(values[0], "\r", ""))
+	}
+	tags := make([]tag, 0)
+	// Preserve the existing indexed form range, including gaps from removals.
+	for i := 0; i <= 32; i++ {
+		if len(form.Value[fmt.Sprintf("tag[%d]name", i)]) == 0 {
+			continue
+		}
+		id := field(i, "tag_id")
+		tags = append(tags, tag{Nr: fmt.Sprint(i), ID: id, Name: field(i, "name"),
+			Sym: field(i, "symbol"), Color: field(i, "color"), Enabled: enabled[id]})
+	}
+	return tags
+}
+
 func (t tag) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Symbol: %s\n", t.Sym))
@@ -1104,34 +1131,6 @@ func main() {
 
 		router_tray.POST("/ping", func(ctx *gin.Context) { ctx.String(http.StatusOK, "All fine") })
 
-		merge_form := func(string_slice []string) string {
-			var ret string
-			if len(string_slice) > 0 {
-				ret = string_slice[0]
-				ret = strings.TrimSpace(ret)
-				ret = strings.ReplaceAll(ret, "\r", "")
-				ret = html.EscapeString(ret)
-			} else {
-				ret = "_"
-			}
-			return ret
-		}
-		extract_tags_from_multiform := func(form *multipart.Form) []tag {
-			ret_tags := make([]tag, 0)
-			for i := 0; i <= 32; i++ {
-				if len(form.Value[fmt.Sprintf("tag[%d]name", i)]) > 0 {
-					tagnr := fmt.Sprint(i)
-					tagid := merge_form(form.Value[fmt.Sprintf("tag[%d]tag_id", i)])
-					tagname := merge_form(form.Value[fmt.Sprintf("tag[%d]name", i)])
-					tagsymbol := merge_form(form.Value[fmt.Sprintf("tag[%d]symbol", i)])
-					tagcolor := merge_form(form.Value[fmt.Sprintf("tag[%d]color", i)])
-					new_tag := tag{Nr: tagnr, ID: tagid, Name: tagname, Sym: tagsymbol, Color: tagcolor}
-					ret_tags = append(ret_tags, new_tag)
-				}
-			}
-			return ret_tags
-		}
-
 		router_tray.POST("/post-tag", func(c *gin.Context) {
 			id_str := c.PostForm("id")
 			if id_str == "" {
@@ -1223,11 +1222,20 @@ func main() {
 
 			withProfileLock(sub, func() {
 				profile_data := get_data(sub)
-				profile_data.Tags = extract_tags_from_multiform(form)
+				profile_data.Tags = tagsFromMultiform(form, profile_data.Tags)
 				profile_data.Tag_edit = false
 				set_data(profile_data, sub)
 			})
 			render_workspace_container_to_html(c)
+		})
+		router_tray.POST("/tag-cancel", func(c *gin.Context) {
+			sub := get_uuid(c)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				profile.Tag_edit = false
+				set_data(profile, sub)
+				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile))
+			})
 		})
 		router_tray.POST("/tag-create", func(c *gin.Context) {
 			sub := get_uuid(c)
@@ -1239,7 +1247,8 @@ func main() {
 
 			withProfileLock(sub, func() {
 				profile_data := get_data(sub)
-				profile_data.Tags = extract_tags_from_multiform(form)
+				profile_data.Tags = tagsFromMultiform(form, profile_data.Tags)
+				profile_data.Tag_edit = true
 				if len(profile_data.Tags) >= 32 {
 					c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
 					return

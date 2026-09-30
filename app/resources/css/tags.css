@@ -133,304 +133,97 @@
     color: #573900;
 }
 
-#tag-container-ul {
-    margin: auto;
-    overflow-x: auto;
-    border-style: solid;
-    border-radius: 0.65rem;
-    border-width: 3px;
-    border-color: var(--gray-02);
-    padding: 4px;
-
-    list-style-type: none;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
+#tag-editor-form {
+    padding: 0 1rem 0.5rem;
 }
-
-#tag-container-tag-list {
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    justify-content: space-between;
-}
-
-#tag-container-ul > li {
-    display: flex;
-    flex-direction: column;
-    /* float: left; */
-    /* display: block; */
-    background-color: var(--tag-bg);
-    color: #fff;
-    margin: 4px;
-    border-radius: 0.65rem;
-    padding: 0 8px;
-}
-
-#tag-container-edit-buttons {
-    display: flex;
-    flex-direction: column;
-}
-
-.tag-container-buttons {
-    height: 48px;
-    width: 48px;
-    border-radius: 1em;
-    padding: auto;
-    margin: auto 12px auto 0;
-    background-color: var(--gray-01);
-
-    text-align: center;
-    vertical-align: middle;
-    line-height: 50px;
-}
-
-.colortest {
-    color: yellow;
-}
-
-.tag-name {
-    /* overflow-x: hide; */
-    overflow: hidden;
-    flex-wrap: nowrap;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.tag-name:hover {
-    overflow: visible;
-}
-.tag-name:hover span {
-    position: relative;
-    background-color: var(--tag-bg);
-    box-shadow: 0 0 4px 0 black;
-    border-radius: 4px;
-    padding: 4px;
-}
-
-input[type="color"] {
-	/* display: block; */
-    margin: 0;
-	width: 100%;
-	height: 32px;
-	/* border: none; */
-    border-radius: 0.35rem;
-    box-sizing: border-box;
-}
-
-input[type="text"].input-hidden {
-    visibility: hidden;
-    width: 0;
-    height: 0;
-}
-.hidden {
-    width: 0;
-    height: 0;
-}
-
-input[type="text"]
-{
-    height: 32px;
-    width: 100%;
-    font-size:18px;
-    /* width: 100%; */
-    padding: 0 6px;
-    margin: 0;
-    /* margin: 4px 0; */
-    /* display: inline-block; */
-    border: 2px solid #666;
-    border-radius: 4px;
-    box-sizing: border-box;
-}
-
-/**/
-/* Customize the label (the container) */
-.cb-container {
-  display: block;
-  position: relative;
-  padding-left: 35px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  font-size: 14px;
-  font-style: italic;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
-}
-
-/* Hide the browser's default checkbox */
-.cb-container input {
-  position: absolute;
-  opacity: 0;
-  cursor: pointer;
-  height: 0;
-  width: 0;
-}
-
-/* Create a custom checkbox */
-.checkmark {
-    position: absolute;
+.tag-editor-toolbar {
+    position: sticky;
     top: 0;
-    left: 0;
-    height: 1.6em;
-    width: 1.6em;
-    background-color: #eee;
-    border-radius: 0.25rem;
-    transform: translateY(-0.15em);
-}
-
-/* On mouse-over, add a grey background color */
-.cb-container:hover input ~ .checkmark {
-  background-color: #ccc;
-}
-
-/* When the checkbox is checked, add a blue background */
-.cb-container input:checked ~ .checkmark {
-  background-color: #0073e6;
-}
-
-/* Create the checkmark/indicator (hidden when not checked) */
-.checkmark:after {
-  content: "";
-  position: absolute;
-  display: none;
-}
-
-/* Show the checkmark when checked */
-.cb-container input:checked ~ .checkmark:after {
-  display: block;
-}
-
-/* Style the checkmark/indicator */
-.cb-container .checkmark:after {
-  left: 7px;
-  top: 3px;
-  width: 6px;
-  height: 12px;
-  border: solid white;
-  border-width: 0 3px 3px 0;
-  -webkit-transform: rotate(45deg);
-  -ms-transform: rotate(45deg);
-  transform: rotate(45deg);
-}
-/**/
-
-input[type="checkbox"] {
-    background-color: #ecc593;
-    color: red;
-    border: 0.15em solid black;
-    width: 1.55em;
-    height: 1.55em;
-    transform: translateY(-0.075em);
-}
-input[type="checkbox"]::before {
-  content: "";
-  width: 0.65em;
-  height: 0.65em;
-  transform: scale(0);
-  transition: 120ms transform ease-in-out;
-  box-shadow: inset 1em 1em var(--form-control-color);
-}
-
-input[type="checkbox"]:checked::before {
-  transform: scale(1);
-}
-
-.tag-container-tag.tag-edit {
-    height: 134px;
-}
-.tag-container-tag {
-    font-size: 18px;
-    width: 80px;
-    height: 110px;
-    padding: 0px;
+    z-index: 1;
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    background: var(--tray-bg);
+    border-bottom: 1px solid var(--gray-02);
 }
-
-.tag-name-wrapper {
-    margin: 10px 0;
+.tag-editor-toolbar h2 {
+    font-size: 16px;
+}
+.tag-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+.tag-manage-button.tag-editor-save,
+.tag-manage-button.tag-editor-save:hover:not(:disabled) {
+    background: var(--color-01);
+    border-color: var(--color-01);
+    color: #fff;
+}
+.tag-editor-columns,
+.tag-editor-row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) 4rem 44px;
+    gap: 0.5rem;
+    align-items: center;
+}
+.tag-editor-columns {
+    padding: 0.5rem 0 0.25rem;
+    color: var(--gray-07);
+    font-size: 0.75rem;
+}
+#tag-editor-list {
+    list-style: none;
+}
+.tag-editor-row {
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--gray-02);
+}
+.tag-editor-row input:not([type="hidden"]),
+.tag-editor-remove {
+    min-width: 0;
     width: 100%;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--gray-05);
+    border-radius: 6px;
+    background: #fff;
+    font: inherit;
+    font-size: 16px;
 }
-
-.tag-symbol-color-container {
-    /* width: 160px; */
-    /* padding: 4px; */
-    margin: 10px 0;
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
-.tag-color-wrapper {
-    width: 100%;
-    display: flex;
-    /* justify-content: center; */
-    /* align-items: center; */
-}
-
-.tag-symbol-wrapper {
-    width: 36px;
-    /* margin: 5px 0; */
-    display: flex;
-    /* justify-content: center; */
-    /* align-items: center; */
-    /* max-width: 100%; */
-}
-.tag-symbol {
-    max-width: 100%;
+.tag-editor-row .tag-editor-symbol {
+    font-size: 20px;
     text-align: center;
 }
-
-.tooltiptext-tagedit {
-  visibility: hidden;
-  /* width: 130px; */
-  background-color: var(--gray-07);
-  color: #fff;
-  text-align: center;
-  font-size: 12px;
-  border-radius: 6px;
-  padding: 7px;
-  line-height: 1em;
-  z-index: 1;
-  position: fixed;
-  /* position: absolute; */
-  /* top: 170px; */
-
-  white-space: nowrap;
-  overflow: visible;
-  /* left: 105%; */
+.tag-editor-row input[type="color"] {
+    padding: 0.25rem;
+    cursor: pointer;
 }
-.tooltip:hover .tooltiptext-tagedit {
-  visibility: visible;
-  transition-delay: 1s;
+.tag-editor-remove {
+    font-size: 24px;
+    color: var(--gray-07);
+    cursor: pointer;
 }
-
-.tag-button-remove-wrapper {
-    width: 36px;
-    height: 32px;
-    display: flex;
+.tag-editor-remove:hover:not(:disabled) {
+    color: #a32020;
+    border-color: #a32020;
+    background: #fff2f2;
 }
-.tag-button-remove {
-    font-size: 18px;
-    width: 100%;
-    border: 2px solid #666;
-    border-radius: 4px;
-    box-sizing: border-box;
+.tag-editor-row input:focus-visible,
+.tag-editor-remove:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: 1px;
 }
-.tag-button-remove:hover {
-    border-style: inset;
-    border-width: 2px;
-    background-color: lightgray;
+.tag-editor-remove:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
-
-.tag-title {
-    margin-top: 6px;
-    display: flex;
-    justify-content: space-between;
+.tag-editor-empty {
+    padding: 0.75rem 0;
+    color: var(--gray-07);
+    font-size: 0.875rem;
 }

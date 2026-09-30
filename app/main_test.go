@@ -261,3 +261,111 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		}
 	}
 }
+
+func TestTagFilterTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/tags.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := []tag{
+		{ID: "reading-id", Nr: "0", Name: "Reading & notes", Sym: "📚", Color: "#335599", Enabled: true},
+		{ID: "work-id", Nr: "1", Name: "Work", Color: "#ffffff"},
+		{ID: "unnamed-id", Nr: "2", Color: "#335599"},
+		{ID: "whitespace-id", Nr: "3", Name: " \t ", Color: "#335599"},
+	}
+	for _, test := range []struct {
+		name    string
+		profile profile_data
+		starred string
+	}{
+		{name: "tags", profile: profile_data{Tags: tags}, starred: "false"},
+		{name: "starred", profile: profile_data{Tags: tags, Only_favorites: true}, starred: "true"},
+		{name: "no tags", starred: "false"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var rendered bytes.Buffer
+			if err := tmpl.ExecuteTemplate(&rendered, "base/tags.tmpl", test.profile); err != nil {
+				t.Fatal(err)
+			}
+			document, err := htmlparser.Parse(&rendered)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attribute := func(node *htmlparser.Node, name string) string {
+				for _, attr := range node.Attr {
+					if attr.Key == name {
+						return attr.Val
+					}
+				}
+				return ""
+			}
+			elements := make(map[string]*htmlparser.Node)
+			var visit func(*htmlparser.Node)
+			visit = func(node *htmlparser.Node) {
+				if node.Type == htmlparser.ElementNode {
+					if id := attribute(node, "id"); id != "" {
+						elements[id] = node
+					}
+					if node.Data == "input" {
+						t.Error("browsing filters must not contain editor inputs or hidden checkboxes")
+					}
+					if class := attribute(node, "class"); class == "tag-filter-heading" || class == "tag-filter-color" {
+						t.Error("filter bar must not retain the heading or colour dots")
+					}
+				}
+				for child := node.FirstChild; child != nil; child = child.NextSibling {
+					visit(child)
+				}
+			}
+			visit(document)
+			if star := elements["star-filter-button"]; star == nil || attribute(star, "class") != "tag-star-filter" {
+				t.Error("Starred only must be a separate utility control, not a tag chip")
+			}
+			if !strings.Contains(rendered.String(), "<span>Starred only</span>") {
+				t.Error("starred filter must have a visible Starred only label")
+			}
+			wantPressed := map[string]string{"star-filter-button": test.starred}
+			if len(test.profile.Tags) > 0 {
+				wantPressed["select-tag-0"] = "true"
+				wantPressed["select-tag-1"] = "false"
+				wantPressed["select-tag-2"] = "false"
+				wantPressed["select-tag-3"] = "false"
+			}
+			for id, pressed := range wantPressed {
+				node := elements[id]
+				if node == nil {
+					t.Fatalf("filter %q missing", id)
+				}
+				if node.Data != "button" || attribute(node, "type") != "button" || attribute(node, "aria-pressed") != pressed {
+					t.Errorf("%s must be a non-submit toggle with aria-pressed=%s", id, pressed)
+				}
+				if attribute(node, "hx-target") != "#workspace-container" || attribute(node, "hx-sync") != "#tray-container:drop" {
+					t.Errorf("%s must retain workspace-only, send-safe updates", id)
+				}
+			}
+			if len(test.profile.Tags) > 0 {
+				if !strings.Contains(attribute(elements["select-tag-0"], "style"), "--tag-color: #335599") || !strings.Contains(attribute(elements["select-tag-1"], "style"), "--tag-color: #ffffff") {
+					t.Error("each chip must supply its own tag colour for its outline and selected background")
+				}
+				if attribute(elements["select-tag-0"], "hx-post") != "/tray/tag-toggle-filter" || attribute(elements["select-tag-0"], "hx-vals") != `{"id":"reading-id"}` {
+					t.Error("tag chip must toggle by stable tag ID through the existing endpoint")
+				}
+				if !strings.Contains(rendered.String(), "Reading &amp; notes") {
+					t.Error("tag names must remain HTML-escaped")
+				}
+				for _, id := range []string{"select-tag-2", "select-tag-3"} {
+					if attribute(elements[id], "title") != "Unnamed tag" {
+						t.Error("empty or whitespace-only tag names must have a readable fallback")
+					}
+				}
+			}
+			manage := elements["tags-edit-button"]
+			if manage == nil {
+				t.Fatal("Manage tags must remain available, including when there are no tags")
+			}
+			if attribute(manage, "hx-post") != "/tray/tag-edit" || attribute(manage, "hx-target") != "#tag-container" {
+				t.Error("Manage tags must open the existing editor without replacing the composer")
+			}
+		})
+	}
+}

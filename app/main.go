@@ -611,6 +611,12 @@ type tag struct {
 func (tag) New() tag {
 	return tag{Nr: "0", ID: RandomString(), Sym: "?", Name: "tag name", Color: RandomColor()}
 }
+func (t tag) DisplayName() string {
+	if name := strings.TrimSpace(t.Name); name != "" {
+		return name
+	}
+	return "Unnamed tag"
+}
 func (t tag) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Symbol: %s\n", t.Sym))

@@ -11,50 +11,39 @@
 {{ end }}
 
 {{ define "base/tags-show.tmpl" }}
-        <div id="tag-container-tag-list">
-            <ul id="tag-container-ul">
-                {{ range $tag := .Tags }}
-                    {{ template "base/tagshow.tmpl" $tag }}
-                {{ end }}
-            </ul>
-
-            <button class=tag-container-buttons id="tags-edit-button" hx-post="/tray/tag-edit"
-                hx-target="#tag-container"
-                hx-swap="outerHTML">Edit</button>
-            <button class=tag-container-buttons id="star-filter-button" hx-post="/tray/star-filter"
-                 hx-sync="#tray-container:drop"
-                hx-target="#workspace-container"
-                 hx-swap="outerHTML scroll:#doc-container:bottom"
-                >
-                <!--<span class="material-symbols-outlined colortest">star_shine</span>-->
-                <div class="tooltip">
-                    <span class="{{ if .Only_favorites }}colorfill-enabled{{ else }}colorfill-greyout{{ end }}">⭐</span>
-                    <div class="tooltiptext-tagedit">Only show starred posts</div>
-                </div>
-                </button>
+    <div class="tag-filter-panel" role="group" aria-label="Message filters">
+        {{ if .Tags }}
+        <ul id="tag-filter-list" aria-label="Filter by tag">
+            {{ range $tag := .Tags }}
+                {{ template "base/tagshow.tmpl" $tag }}
+            {{ end }}
+        </ul>
+        {{ end }}
+        <div class="tag-filter-toolbar">
+            <button class="tag-star-filter" id="star-filter-button" type="button" aria-pressed="{{ if .Only_favorites }}true{{ else }}false{{ end }}"
+                hx-post="/tray/star-filter" hx-sync="#tray-container:drop"
+                hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom">
+                <span class="tag-star-icon" aria-hidden="true">★</span>
+                <span>Starred only</span>
+                <span class="tag-filter-selection" aria-hidden="true">✓</span>
+            </button>
+            <button class="tag-manage-button" id="tags-edit-button" type="button"
+                hx-post="/tray/tag-edit" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
         </div>
+    </div>
 {{ end }}
 
 {{ define "base/tagshow.tmpl" }}
     <li id="tag-li-{{ .Nr }}">
-        <div class="tag-container-tag">
-            <div class="tag-title">
-                <div class="tag-name"><span>{{ .Name }}</span></div>
-                {{ .Sym }}
-            </div>
-            <input type="color" id="color-picker"   name="tag[{{ .Nr }}]color" value="{{ .Color }}" disabled>
-            <label class="cb-container">Show
-              <input type="checkbox" id="select-tag-{{.Nr}}"   name="tag[{{ .Nr }}]select" value="tag[{{ .Nr }}]select" {{ if .Enabled }}checked{{ end }}
-                hx-trigger="change"
-                hx-post="/tray/tag-toggle-filter"
-                hx-sync="#tray-container:drop"
-                hx-vals='{"id":"{{ .ID }}"}'
-                hx-target="#workspace-container"
-                 hx-swap="outerHTML scroll:#doc-container:bottom"
-                >
-              <span class="checkmark"></span>
-            </label>
-        </div>
+        <button class="tag-filter-chip" id="select-tag-{{ .Nr }}" type="button" title="{{ .DisplayName }}"
+            style="--tag-color: {{ if .Color }}{{ .Color }}{{ else }}#777777{{ end }}"
+            aria-pressed="{{ if .Enabled }}true{{ else }}false{{ end }}"
+            hx-post="/tray/tag-toggle-filter" hx-vals='{"id":"{{ .ID }}"}'
+            hx-sync="#tray-container:drop" hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom">
+            {{ if .Sym }}<span class="tag-filter-symbol" aria-hidden="true">{{ .Sym }}</span>{{ end }}
+            <span class="tag-filter-name">{{ .DisplayName }}</span>
+            <span class="tag-filter-selection" aria-hidden="true">✓</span>
+        </button>
     </li>
 {{ end }}
 

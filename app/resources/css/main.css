@@ -495,7 +495,7 @@ textarea[name=title] {
 }
 .doc-entry-tagview-segment[aria-pressed="false"] .doc-entry-tag-symbol {
     color: transparent;
-    font-size: 20px;
+    font-size: var(--message-tag-touch-font-size, 20px);
     text-shadow: 0 0 0 #29292977;
 }
 .doc-entry-tagview-segment:disabled {
@@ -966,7 +966,8 @@ tt {
         display: none;
     }
     .doc-entry-tagview {
-        --message-tag-touch-height: 32px;
+        --message-tag-touch-height: 24px;
+        --message-tag-touch-font-size: 18px;
     }
     .doc-entry-button {
         flex-direction: row;
@@ -1009,7 +1010,7 @@ tt {
     .doc-entry-tagview:hover,
     .doc-entry-tagview:focus-within {
         height: var(--message-tag-touch-height, 36px);
-        font-size: 20px;
+        font-size: var(--message-tag-touch-font-size, 20px);
         margin-top: 0;
         border-radius: 0.65rem;
         transition: none;

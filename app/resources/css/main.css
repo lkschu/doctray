@@ -318,9 +318,9 @@ input[type="file"] {
 	flex-direction: column;
 	gap: var(--composer-action-gap);
 	flex-shrink: 0;
-	/* Stay reachable during draft scrolling, with room for the focus outline. */
+	/* Stay reachable during draft scrolling without offsetting the aligned column. */
 	position: sticky;
-	top: 6px;
+	top: 0;
 }
 .composer-actions button {
 	display: grid;

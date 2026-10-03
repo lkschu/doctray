@@ -601,6 +601,9 @@ func TestTagFilterTemplate(t *testing.T) {
 		{ID: "unnamed-id", Nr: "2", Color: "#335599"},
 		{ID: "whitespace-id", Nr: "3", Name: " \t ", Color: "#335599"},
 	}
+	for i := 4; i < 20; i++ {
+		tags = append(tags, tag{ID: fmt.Sprintf("tag-%d", i), Nr: fmt.Sprint(i), Name: fmt.Sprintf("Tag %d", i), Color: "#335599"})
+	}
 	inactiveTags := append([]tag(nil), tags...)
 	for i := range inactiveTags {
 		inactiveTags[i].Enabled = false
@@ -635,11 +638,18 @@ func TestTagFilterTemplate(t *testing.T) {
 				return ""
 			}
 			elements := make(map[string]*htmlparser.Node)
+			var summarySegments []*htmlparser.Node
 			var visit func(*htmlparser.Node)
 			visit = func(node *htmlparser.Node) {
 				if node.Type == htmlparser.ElementNode {
 					if id := attribute(node, "id"); id != "" {
+						if elements[id] != nil {
+							t.Errorf("duplicate filter element ID %q", id)
+						}
 						elements[id] = node
+					}
+					if attribute(node, "class") == "tag-filter-summary-segment" {
+						summarySegments = append(summarySegments, node)
 					}
 					if node.Data == "input" {
 						t.Error("browsing filters must not contain editor inputs or hidden checkboxes")
@@ -655,6 +665,35 @@ func TestTagFilterTemplate(t *testing.T) {
 			visit(document)
 			if attribute(elements["tag-container"], "data-tag-mode") != "filter" {
 				t.Error("browsing panels must expose their mode for scoped scroll preservation")
+			}
+			if attribute(elements["tag-container"], "data-filters-open") != "false" {
+				t.Error("mobile browsing panels must start collapsed")
+			}
+			for _, id := range []string{"tag-filter-disclosure", "tag-filter-collapse"} {
+				button := elements[id]
+				if button == nil {
+					t.Fatalf("disclosure button %q missing", id)
+				}
+				if button.Data != "button" || attribute(button, "type") != "button" || attribute(button, "aria-controls") != "tag-filter-content" || attribute(button, "hx-post") != "" {
+					t.Errorf("%s must control disclosure locally, not mutate filters or submit a request", id)
+				}
+			}
+            if attribute(elements["tag-filter-disclosure"], "aria-expanded") != "false" || elements["tag-filter-content"] == nil {
+                t.Error("disclosure must expose its initial state and a real control target")
+            }
+			if attribute(elements["tag-filter-collapse"].Parent, "id") != "tag-filter-content" {
+				t.Error("collapse must remain outside the filter controls' scroll area")
+			}
+			if strings.Contains(attribute(elements["tag-filter-disclosure"], "aria-label"), "active") != test.clear || attribute(elements["tag-filter-summary-star"], "data-selected") != test.starred {
+				t.Error("collapsed summary must describe active filters and the current starred-only state")
+			}
+			if len(summarySegments) != len(test.profile.Tags) {
+				t.Fatal("collapsed summary must retain every tag, including with 20 tags or none")
+			}
+			for i, segment := range summarySegments {
+				if segment.Data != "span" || attribute(segment.Parent, "aria-hidden") != "true" || attribute(segment, "data-selected") != fmt.Sprint(test.profile.Tags[i].Enabled) || !strings.Contains(attribute(segment, "style"), test.profile.Tags[i].Color) {
+					t.Error("summary fragments must be decorative and reflect browsing-filter selection and colour")
+				}
 			}
 			if star := elements["star-filter-button"]; star == nil || attribute(star, "class") != "tag-star-filter" {
 				t.Error("Starred only must be a separate utility control, not a tag chip")
@@ -864,6 +903,9 @@ func TestTagEditorTemplate(t *testing.T) {
 		visit(document)
 		if attribute(elements["tag-container"], "data-tag-mode") != "edit" {
 			t.Error("editor panels must expose their mode for narrow workspace layout and scoped scroll preservation")
+		}
+		if elements["tag-filter-disclosure"] != nil || elements["tag-filter-collapse"] != nil {
+			t.Error("the editor must retain explicit Save/Cancel, not filter-panel dismissal controls")
 		}
 		for _, id := range []string{"tag-editor-form", "tag-add-button", "tag-save-button", "tag-cancel-button"} {
 			if elements[id] == nil {

@@ -52,6 +52,22 @@
     });
     document.addEventListener("htmx:load", updateWorkspaceControls);
 
+    // Browser-only disclosure state; desktop always shows the full controls.
+    const narrowLayout = window.matchMedia("(max-width: 48rem)");
+    let filtersOpen = false;
+    function updateFilterDisclosure() {
+        const toggle = document.getElementById("tag-filter-disclosure");
+        if (!toggle) return; // Editing has its own Save/Cancel flow.
+        document.getElementById("tag-container").dataset.filtersOpen = String(filtersOpen);
+        toggle.setAttribute("aria-expanded", String(filtersOpen));
+    }
+    document.addEventListener("DOMContentLoaded", updateFilterDisclosure);
+    document.addEventListener("htmx:load", updateFilterDisclosure);
+    function tagScrollPanel(panel) {
+        return narrowLayout.matches && panel.dataset.tagMode === "filter"
+            ? panel.querySelector(".tag-filter-panel") : panel;
+    }
+
     // Preserve only same-mode panel refreshes, not opening/closing the editor.
     const tagPanelScroll = new WeakMap();
     document.addEventListener("htmx:beforeSwap", event => {
@@ -63,17 +79,32 @@
         const editorRefresh = targetID === "tag-container" && path === "/tray/tag-create";
         if (!filterRefresh && !editorRefresh) return;
         const panel = document.getElementById("tag-container");
-        if (panel) tagPanelScroll.set(event.detail.xhr, { mode: panel.dataset.tagMode, top: panel.scrollTop });
+        if (panel) tagPanelScroll.set(event.detail.xhr, { mode: panel.dataset.tagMode, top: tagScrollPanel(panel).scrollTop });
     });
     document.addEventListener("htmx:afterSwap", event => {
+        // Expand before restoring scroll to the new inner panel.
+        updateFilterDisclosure();
         const scroll = tagPanelScroll.get(event.detail.xhr);
         if (!scroll) return;
         tagPanelScroll.delete(event.detail.xhr);
         const panel = document.getElementById("tag-container");
-        if (panel?.dataset.tagMode === scroll.mode) panel.scrollTop = scroll.top;
+        if (panel?.dataset.tagMode === scroll.mode) tagScrollPanel(panel).scrollTop = scroll.top;
     });
 
     document.addEventListener("click", event => {
+        const toggle = event.target.closest("#tag-filter-disclosure");
+        const collapse = event.target.closest("#tag-filter-collapse");
+        if (toggle || collapse) {
+            const focusWasOnToggle = toggle === document.activeElement;
+            filtersOpen = toggle ? !filtersOpen : false;
+            updateFilterDisclosure();
+            if (collapse) document.getElementById("tag-filter-disclosure").focus({ preventScroll: true });
+            else if (focusWasOnToggle && narrowLayout.matches) {
+                // The summary is replaced by the expanded controls; keep keyboard focus local.
+                document.querySelector("#tag-filter-content button:not(:disabled)")?.focus({ preventScroll: true });
+            }
+            return;
+        }
         const remove = event.target.closest(".tag-editor-remove");
         if (remove && !remove.disabled) remove.closest(".tag-editor-row").remove();
     });

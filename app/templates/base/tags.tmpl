@@ -1,5 +1,5 @@
 {{ define "base/tags.tmpl" }}
-<div id="tag-container" data-tag-mode="{{ if .Tag_edit }}edit{{ else }}filter{{ end }}">
+<div id="tag-container" data-tag-mode="{{ if .Tag_edit }}edit{{ else }}filter{{ end }}"{{ if not .Tag_edit }} data-filters-open="false"{{ end }}>
     <link href='/resources/css/tags.css' rel='stylesheet' type='text/css' />
 
     {{ if .Tag_edit }}
@@ -11,6 +11,20 @@
 {{ end }}
 
 {{ define "base/tags-show.tmpl" }}
+    <button id="tag-filter-disclosure" class="tag-filter-disclosure" type="button"
+        aria-expanded="false" aria-controls="tag-filter-content"
+        aria-label="Message filters{{ if .HasActiveFilters }}, active{{ end }}{{ if .Only_favorites }}, starred only{{ end }}">
+        <span>Filters{{ if .HasActiveFilters }} · active{{ end }}</span>
+        <span class="tag-filter-summary" aria-hidden="true">
+            {{ range $tag := .Tags }}
+            <span class="tag-filter-summary-segment" data-selected="{{ if $tag.Enabled }}true{{ else }}false{{ end }}"
+                style="--tag-color: {{ if $tag.Color }}{{ $tag.Color }}{{ else }}#777777{{ end }}"></span>
+            {{ end }}
+        </span>
+        <span id="tag-filter-summary-star" class="tag-filter-summary-star" data-selected="{{ if .Only_favorites }}true{{ else }}false{{ end }}" aria-hidden="true">{{ if .Only_favorites }}★{{ else }}☆{{ end }}</span>
+        <span class="tag-filter-chevron" aria-hidden="true">▾</span>
+    </button>
+    <div id="tag-filter-content">
     <div class="tag-filter-panel" role="group" aria-label="Message filters">
         {{ if .Tags }}
         <ul id="tag-filter-list" aria-label="Filter by tag">
@@ -35,6 +49,8 @@
             <button class="tag-manage-button" id="tags-edit-button" type="button"
                 hx-post="/tray/tag-edit" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
         </div>
+    </div>
+    <button id="tag-filter-collapse" class="tag-filter-collapse" type="button" aria-controls="tag-filter-content">Hide filters ⌃</button>
     </div>
 {{ end }}
 

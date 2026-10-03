@@ -99,6 +99,7 @@ type AuthHandler struct {
 	session_label_login_binding string
 	default_authenticated_url string
 	pending_auth_transactions *pendingAuthTransactions
+	insecureSessionCookie bool
 	logger *slog.Logger
 }
 func (a AuthHandler) UserIDLabel() string {
@@ -137,6 +138,12 @@ func NewAuthHandler(clientID string, clientSecret string, sessionExpiration int6
 		expirationTimer: sessionExpiration,
 		session_label_expired: "expiration", session_label_userid: "sub", session_label_login_binding: "auth_login_binding",
 		default_authenticated_url: "/tray/", pending_auth_transactions: newPendingAuthTransactions(), logger: logger }
+}
+
+// SetSessionCookieSecure aligns logout with the session store's cookie policy.
+// Cookies remain secure by default, including for a zero-value handler.
+func (handler *AuthHandler) SetSessionCookieSecure(secure bool) {
+	handler.insecureSessionCookie = !secure
 }
 
 func (handler *AuthHandler) requestLogger(ctx *gin.Context) *slog.Logger {
@@ -224,7 +231,7 @@ func (handler *AuthHandler) Logout() gin.HandlerFunc{
 			MaxAge:   -1,
 			Path:     "/",
 			HttpOnly: true,
-			Secure:   true,
+			Secure:   !handler.insecureSessionCookie,
 			SameSite: http.SameSiteLaxMode,
 		})
 		err := s.Save()

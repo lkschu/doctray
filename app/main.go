@@ -1173,7 +1173,20 @@ func main() {
 		panic("DOCTRAY_SESSION_ENCRYPTION_KEY must contain 16, 24, or 32 bytes!")
 	}
 
+	sessionCookieSecure := true
+	if value, configured := os.LookupEnv("DOCTRAY_SESSION_COOKIE_SECURE"); configured {
+		var err error
+		sessionCookieSecure, err = strconv.ParseBool(value)
+		if err != nil {
+			panic("DOCTRAY_SESSION_COOKIE_SECURE must be true or false")
+		}
+	}
+	if !sessionCookieSecure {
+		logger.Warn("insecure session cookies enabled; use only for HTTP development", "event", "session.cookie.insecure")
+	}
+
 	auth_handler := openidauth.NewAuthHandler(clientID, clientSecret, int64(auth_session_duration.Seconds()), issuerUrl, redirectURL, logger)
+	auth_handler.SetSessionCookieSecure(sessionCookieSecure)
 
 	basepath, success := os.LookupEnv("DOCTRAY_TARGET_DIRECTORY")
 	if !success {
@@ -1200,7 +1213,7 @@ func main() {
 	store.Options(sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   sessionCookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 	router.Use(sessions.Sessions("session", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions

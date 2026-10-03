@@ -792,6 +792,30 @@ type post struct {
 	Tags_enabled []tag_enabled               `json:"-"`
 }
 
+func compactPostDate(value string, now time.Time) string {
+	at, err := time.Parse(http.TimeFormat, value)
+	if err != nil {
+		return value // Keep legacy or malformed dates visible without rewriting them.
+	}
+	layout := "2 Jan · 15:04 UTC"
+	if at.UTC().Year() != now.UTC().Year() {
+		layout = "2 Jan 2006 · 15:04 UTC"
+	}
+	return at.UTC().Format(layout)
+}
+
+func (p post) CompactDate() string {
+	return compactPostDate(p.Date, time.Now())
+}
+
+func (p post) DateTime() string {
+	at, err := time.Parse(http.TimeFormat, p.Date)
+	if err != nil {
+		return ""
+	}
+	return at.UTC().Format(time.RFC3339)
+}
+
 func (p post) HasPendingPreviews() bool {
 	if p.DeletedAt != nil {
 		return false

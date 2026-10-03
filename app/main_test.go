@@ -103,12 +103,42 @@ func TestAttachmentTemplateOnlyLoadsThumbnail(t *testing.T) {
 	}
 }
 
+func TestPostDateFormatting(t *testing.T) {
+	// The reference is in 2025 locally but 2026 in UTC.
+	now := time.Date(2025, 12, 31, 23, 30, 0, 0, time.FixedZone("west", -3600))
+	for _, test := range []struct {
+		name     string
+		date     string
+		compact  string
+		datetime string
+	}{
+		{name: "current UTC year", date: "Fri, 02 Jan 2026 14:05:59 GMT", compact: "2 Jan · 14:05 UTC", datetime: "2026-01-02T14:05:59Z"},
+		{name: "previous year", date: "Wed, 31 Dec 2025 23:59:59 GMT", compact: "31 Dec 2025 · 23:59 UTC", datetime: "2025-12-31T23:59:59Z"},
+		{name: "future year", date: "Sun, 03 Jan 2027 14:05:59 GMT", compact: "3 Jan 2027 · 14:05 UTC", datetime: "2027-01-03T14:05:59Z"},
+		{name: "legacy", date: "unknown <date>", compact: "unknown <date>"},
+		{name: "empty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := compactPostDate(test.date, now); got != test.compact {
+				t.Errorf("compact date = %q, want %q", got, test.compact)
+			}
+			message := post{Date: test.date}
+			if got := message.DateTime(); got != test.datetime {
+				t.Errorf("datetime = %q, want %q", got, test.datetime)
+			}
+			if message.Date != test.date {
+				t.Error("date presentation must not rewrite the stored value")
+			}
+		})
+	}
+}
+
 func TestMessageCardTemplate(t *testing.T) {
 	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := post{DocID: 42, Title: "Message text", Type: "msg", Starred: true,
+	message := post{DocID: 42, Title: "Message text", Type: "msg", Starred: true, Date: "Tue, 03 Oct 2000 14:05:59 GMT",
 		Webpreview: []previewbuilder.URLPreview{{ID: "pending", Pending: true, URL: "https://example.com/?a=1&b=2",
 			Title: "Preview & <title>", Image: "/resources/preview-placeholder.svg", ImageFallback: "https://example.com/favicon"}},
 		Files: []docentry_file{{Url: "/media/photo.jpg", OrgName: "Photo & <notes>.jpg", ThumbnailURL: "/media/photo.jpg.thumb.png"}}}
@@ -134,6 +164,8 @@ func TestMessageCardTemplate(t *testing.T) {
 	}
 	elements := make(map[string]*htmlparser.Node)
 	tagButtons, actionButtons, thumbnails := 0, 0, 0
+	var mobileDate *htmlparser.Node
+	mobileIcons := 0
 	var visit func(*htmlparser.Node)
 	visit = func(node *htmlparser.Node) {
 		if node.Type == htmlparser.ElementNode {
@@ -154,6 +186,15 @@ func TestMessageCardTemplate(t *testing.T) {
 					if attribute(node, "hx-post") == "/tray/doc-delete" && attribute(node, "hx-target") != "closest .doc-entry" {
 						t.Error("Delete must still replace only its message row")
 					}
+				}
+			}
+			if node.Data == "time" && attribute(node, "class") == "doc-entry-mobile-date" {
+				mobileDate = node
+			}
+			if strings.Contains(attribute(node, "class"), "doc-entry-action-mobile") {
+				mobileIcons++
+				if node.Data != "span" || attribute(node, "aria-hidden") != "true" || node.Parent.Data != "button" {
+					t.Error("mobile action icons must remain decorative children of the labelled native buttons")
 				}
 			}
 			if node.Data == "img" {
@@ -178,6 +219,15 @@ func TestMessageCardTemplate(t *testing.T) {
 	if tagButtons != 20 || actionButtons != 2 || thumbnails != 1 {
 		t.Error("responsive cards must retain every tag, both actions and the generated thumbnail")
 	}
+	if mobileDate == nil {
+		t.Fatal("mobile cards must retain a timestamp beside their actions")
+	}
+	if attribute(mobileDate.Parent, "class") != "doc-entry-button debug" || attribute(mobileDate, "datetime") != "2000-10-03T14:05:59Z" || attribute(mobileDate, "aria-label") != message.Date || attribute(mobileDate, "title") != message.Date {
+		t.Error("the compact footer timestamp must preserve full accessible and machine-readable dates")
+	}
+	if mobileIcons != 2 {
+		t.Error("both message actions must include their lighter mobile icon")
+	}
 	preview := elements["doc-webpreviews-42"]
 	if preview == nil || attribute(preview, "class") != "doc-entry-web-previews" || attribute(preview, "hx-get") != "/tray/doc-preview/42" || attribute(preview, "hx-trigger") != "every 1s" || attribute(preview, "hx-swap") != "outerHTML" {
 		t.Error("responsive previews must preserve their polling ID, endpoint and fragment swap")
@@ -189,6 +239,14 @@ func TestMessageCardTemplate(t *testing.T) {
 	}
 	if strings.Contains(rendered.String(), `class="doc-entry-tagview `) {
 		t.Error("messages without tags must not retain an empty tag strip")
+	}
+	message.Date = "unknown <date>"
+	rendered.Reset()
+	if err := tmpl.ExecuteTemplate(&rendered, "base/doc-entry.tmpl", message); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.String(), "<date>") || strings.Contains(rendered.String(), "datetime=") || !strings.Contains(rendered.String(), "unknown &lt;date&gt;") {
+		t.Error("legacy timestamps must remain safely visible without invalid datetime attributes")
 	}
 }
 
@@ -214,9 +272,19 @@ func TestMessageStarButtonTemplate(t *testing.T) {
 			}
 			return ""
 		}
-		buttons := 0
+		buttons, mobileIcons := 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.ElementNode && strings.Contains(attribute(node, "class"), "doc-entry-action-mobile") {
+				mobileIcons++
+				symbol := "☆"
+				if starred {
+					symbol = "★"
+				}
+				if node.Data != "span" || attribute(node, "aria-hidden") != "true" || node.FirstChild == nil || node.FirstChild.Data != symbol {
+					t.Error("star fragments must retain the decorative mobile star icon in both states")
+				}
+			}
 			if node.Type == htmlparser.ElementNode && node.Data == "button" {
 				buttons++
 				if attribute(node, "id") != "doc-star-42" || attribute(node, "type") != "button" || attribute(node, "aria-label") != "Star message 42" || attribute(node, "aria-pressed") != fmt.Sprint(starred) {
@@ -234,7 +302,7 @@ func TestMessageStarButtonTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		if buttons != 1 || strings.Contains(rendered.String(), "doc-entry-container") {
+		if buttons != 1 || mobileIcons != 1 || strings.Contains(rendered.String(), "doc-entry-container") {
 			t.Error("star response must contain only its button wrapper, not a full message")
 		}
 	}

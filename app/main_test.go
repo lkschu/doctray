@@ -514,12 +514,37 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		}
 		elements := make(map[string]*htmlparser.Node)
 		composerCount := 0
+		var navigationButtons []*htmlparser.Node
+		navigationLinks := make(map[string][]string)
+		closeButtons := 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
 			if node.Type == htmlparser.ElementNode {
 				id := attribute(node, "id")
 				if id != "" {
+					if elements[id] != nil {
+						t.Errorf("duplicate tray element ID %q", id)
+					}
 					elements[id] = node
+				}
+				if attribute(node, "class") == "tray-navigation-toggle" {
+					navigationButtons = append(navigationButtons, node)
+				}
+				if attribute(node, "popovertarget") == "tray-navigation" {
+					if node.Data != "button" || attribute(node, "type") != "button" || attribute(node, "aria-label") == "" || attribute(node, "hx-post") != "" {
+						t.Error("navigation controls must be labelled native buttons, not requests or form submissions")
+					}
+					if attribute(node, "popovertargetaction") == "hide" {
+						closeButtons++
+					}
+				}
+				if node.Data == "a" {
+					for parent := node.Parent; parent != nil; parent = parent.Parent {
+						if id := attribute(parent, "id"); id == "header" || id == "tray-navigation" {
+							navigationLinks[id] = append(navigationLinks[id], attribute(node, "href"))
+							break
+						}
+					}
 				}
 				if id == "uploadform" {
 					composerCount++
@@ -538,13 +563,36 @@ func TestTrayLayoutTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "uploadform"} {
+		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "uploadform", "tray-navigation"} {
 			if elements[id] == nil {
 				t.Fatalf("tray element %q missing (tag edit: %t)", id, tagEdit)
 			}
 		}
 		if composerCount != 1 {
 			t.Errorf("tray contains %d composers, want one", composerCount)
+		}
+		menu := elements["tray-navigation"]
+		if menu.Data != "nav" || attribute(menu, "popover") != "auto" || attribute(menu, "aria-label") == "" || menu.Parent != elements["page-container"] {
+			t.Error("navigation must be a named native popover outside replaceable fragments and the composer")
+		}
+		wantNavigationButtons := 2 // Collapsed filter row and expanded filter footer.
+		if tagEdit {
+			wantNavigationButtons = 1 // Editor toolbar.
+		}
+		if len(navigationButtons) != wantNavigationButtons || closeButtons != 1 {
+			t.Error("navigation must remain available in every filter/editor state with one persistent close control")
+		}
+		for _, button := range navigationButtons {
+			if attribute(button, "popovertarget") != "tray-navigation" || attribute(button, "aria-controls") != "tray-navigation" || button.Parent.Data == "button" {
+				t.Error("navigation must be a separate control targeting the persistent popover")
+			}
+		}
+		wantLinks := []string{"/", "/tray", "/about", "/login", "/logout"}
+		if !reflect.DeepEqual(navigationLinks["header"], wantLinks) || !reflect.DeepEqual(navigationLinks["tray-navigation"], wantLinks) {
+			t.Error("desktop and mobile navigation must preserve the same existing routes")
+		}
+		if tagEdit && attribute(elements["tag-editor-form"], "hx-disabled-elt") != "#tag-editor-form button:not(.tray-navigation-toggle), #tag-editor-form input" {
+			t.Error("editor requests must leave navigation available")
 		}
 		for _, id := range []string{"header", "tray-container", "footer"} {
 			if elements[id].Parent != elements["page-container"] {
@@ -564,6 +612,9 @@ func TestTrayLayoutTemplate(t *testing.T) {
 			}
 			if strings.Contains(rendered.String(), `id="uploadform"`) || strings.Contains(rendered.String(), `id="docUpload-text"`) {
 				t.Errorf("%s recreates the composer and would lose its draft", fragment)
+			}
+			if strings.Contains(rendered.String(), `id="tray-navigation"`) {
+				t.Errorf("%s must not recreate the persistent navigation popover", fragment)
 			}
 		}
 	}
@@ -752,11 +803,20 @@ func TestTagFilterTemplate(t *testing.T) {
             if attribute(elements["tag-filter-disclosure"], "aria-expanded") != "false" || elements["tag-filter-content"] == nil {
                 t.Error("disclosure must expose its initial state and a real control target")
             }
-			if attribute(elements["tag-filter-collapse"].Parent, "id") != "tag-filter-content" {
+			if attribute(elements["tag-filter-collapse"].Parent, "class") != "tag-filter-footer" || attribute(elements["tag-filter-collapse"].Parent.Parent, "id") != "tag-filter-content" {
 				t.Error("collapse must remain outside the filter controls' scroll area")
 			}
 			if strings.Contains(attribute(elements["tag-filter-disclosure"], "aria-label"), "active") != test.clear || attribute(elements["tag-filter-summary-star"], "data-selected") != test.starred {
 				t.Error("collapsed summary must describe active filters and the current starred-only state")
+			}
+			disclosure := elements["tag-filter-disclosure"]
+			if !strings.HasPrefix(attribute(disclosure, "aria-label"), "Message filters") {
+				t.Error("label-free disclosure must retain its accessible name")
+			}
+			for child := disclosure.FirstChild; child != nil; child = child.NextSibling {
+				if (child.Type == htmlparser.ElementNode && attribute(child, "aria-hidden") != "true") || (child.Type == htmlparser.TextNode && strings.TrimSpace(child.Data) != "") {
+					t.Error("collapsed disclosure must contain only decorative indicators, not a visible text label")
+				}
 			}
 			if len(summarySegments) != len(test.profile.Tags) {
 				t.Fatal("collapsed summary must retain every tag, including with 20 tags or none")

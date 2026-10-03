@@ -1,6 +1,12 @@
 {{ define "base/header.tmpl" }}
 <nav id="header" aria-label="Main navigation">
     <ul class="header">
+        {{ template "base/navigation-links.tmpl" }}
+    </ul>
+</nav>
+{{ end }}
+
+{{ define "base/navigation-links.tmpl" }}
         <li>
             <a href="/"><b>DocTray</b></a>
         </li>
@@ -16,6 +22,14 @@
         <li>
             <a href="/logout">Logout</a>
         </li>
-    </ul>
+{{ end }}
+
+{{ define "base/tray-navigation.tmpl" }}
+<nav id="tray-navigation" class="tray-navigation-popover" popover="auto" aria-label="Main navigation">
+    <div class="tray-navigation-heading">
+        <strong>Navigation</strong>
+        <button type="button" popovertarget="tray-navigation" popovertargetaction="hide" aria-label="Close navigation">×</button>
+    </div>
+    <ul>{{ template "base/navigation-links.tmpl" }}</ul>
 </nav>
 {{ end }}

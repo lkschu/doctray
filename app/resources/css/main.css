@@ -902,7 +902,8 @@ tt {
     min-width: 0;
     overflow-wrap: anywhere;
 }
-#header ul.header a {
+#header ul.header a,
+.tray-navigation-popover a {
     display: flex;
     align-items: center;
     box-sizing: border-box;
@@ -911,10 +912,14 @@ tt {
     line-height: 1.5;
     color: inherit;
 }
-#header ul.header a:hover {
+#header ul.header a:hover,
+.tray-navigation-popover a:hover,
+.tray-navigation-heading button:hover {
     background-color: #222222;
 }
-#header ul.header a:focus-visible {
+#header ul.header a:focus-visible,
+.tray-navigation-popover a:focus-visible,
+.tray-navigation-heading button:focus-visible {
     outline: 4px solid #fff;
     outline-offset: -4px;
 }
@@ -926,7 +931,79 @@ tt {
     background-color: #111111;
 }
 
+.tray-navigation-toggle {
+    display: none;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--gray-08);
+    font: inherit;
+    font-size: 20px;
+    cursor: pointer;
+}
+.tray-navigation-toggle:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: -4px;
+}
+.tray-navigation-popover {
+    display: none;
+    position: fixed;
+    inset: 0.75rem 0.75rem auto auto;
+    margin: 0;
+    width: min(18rem, calc(100% - 1.5rem));
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+    box-sizing: border-box;
+    overflow-y: auto;
+    padding: 0.5rem;
+    border: 1px solid var(--gray-05);
+    border-radius: 8px;
+    background: #333;
+    color: white;
+}
+.tray-navigation-popover:popover-open {
+    display: block;
+}
+.tray-navigation-popover::backdrop {
+    background: rgb(0 0 0 / 18%);
+}
+.tray-navigation-popover ul {
+    list-style: none;
+}
+.tray-navigation-heading {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #333;
+}
+.tray-navigation-heading button {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 24px;
+    cursor: pointer;
+}
+
 @media (max-width: 48rem) {
+    .tray-page.tray-navigation-ready #header {
+        display: none;
+    }
+    .tray-page.tray-navigation-ready .tray-navigation-toggle {
+        display: grid;
+        place-items: center;
+    }
     :root {
         --width-display-message: 100%;
     }

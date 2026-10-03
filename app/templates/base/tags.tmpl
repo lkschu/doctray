@@ -11,10 +11,10 @@
 {{ end }}
 
 {{ define "base/tags-show.tmpl" }}
+    <div class="tag-filter-summary-row">
     <button id="tag-filter-disclosure" class="tag-filter-disclosure" type="button"
         aria-expanded="false" aria-controls="tag-filter-content"
         aria-label="Message filters{{ if .HasActiveFilters }}, active{{ end }}{{ if .Only_favorites }}, starred only{{ end }}">
-        <span>Filters{{ if .HasActiveFilters }} · active{{ end }}</span>
         <span class="tag-filter-summary" aria-hidden="true">
             {{ range $tag := .Tags }}
             <span class="tag-filter-summary-segment" data-selected="{{ if $tag.Enabled }}true{{ else }}false{{ end }}"
@@ -24,6 +24,8 @@
         <span id="tag-filter-summary-star" class="tag-filter-summary-star" data-selected="{{ if .Only_favorites }}true{{ else }}false{{ end }}" aria-hidden="true">{{ if .Only_favorites }}★{{ else }}☆{{ end }}</span>
         <span class="tag-filter-chevron" aria-hidden="true">▾</span>
     </button>
+    {{ template "base/tray-navigation-toggle.tmpl" }}
+    </div>
     <div id="tag-filter-content">
     <div class="tag-filter-panel" role="group" aria-label="Message filters">
         {{ if .Tags }}
@@ -50,8 +52,16 @@
                 hx-post="/tray/tag-edit" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
         </div>
     </div>
-    <button id="tag-filter-collapse" class="tag-filter-collapse" type="button" aria-controls="tag-filter-content">Hide filters ⌃</button>
+    <div class="tag-filter-footer">
+        <button id="tag-filter-collapse" class="tag-filter-collapse" type="button" aria-controls="tag-filter-content">Hide filters ⌃</button>
+        {{ template "base/tray-navigation-toggle.tmpl" }}
     </div>
+    </div>
+{{ end }}
+
+{{ define "base/tray-navigation-toggle.tmpl" }}
+    <button class="tray-navigation-toggle" type="button" popovertarget="tray-navigation"
+        aria-controls="tray-navigation" aria-label="Open navigation" title="Navigation"><span aria-hidden="true">☰</span></button>
 {{ end }}
 
 {{ define "base/tagshow.tmpl" }}
@@ -71,7 +81,7 @@
 {{ define "base/tags-edit.tmpl" }}
     <form id="tag-editor-form" hx-post="/tray/tag-apply" hx-encoding="multipart/form-data"
         hx-sync="#tray-container:drop" hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom"
-        hx-disabled-elt="#tag-editor-form button, #tag-editor-form input">
+        hx-disabled-elt="#tag-editor-form button:not(.tray-navigation-toggle), #tag-editor-form input">
         <div class="tag-editor-toolbar">
             <h2>Manage tags</h2>
             <div class="tag-editor-actions">
@@ -80,6 +90,7 @@
                 <button class="tag-manage-button tag-editor-save" id="tag-save-button" type="submit">Save changes</button>
                 <button class="tag-manage-button" id="tag-cancel-button" type="button"
                     hx-post="/tray/tag-cancel" hx-params="none" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Cancel</button>
+                {{ template "base/tray-navigation-toggle.tmpl" }}
             </div>
         </div>
         {{ if .Tags }}

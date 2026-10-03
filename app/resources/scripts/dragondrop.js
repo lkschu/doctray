@@ -18,7 +18,7 @@
     let trayRequest = null;
     let trayFocusID = null;
     function updateWorkspaceControls() {
-        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button, .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button:not(.tray-navigation-toggle), .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
             control.disabled = !!trayRequest;
         });
     }
@@ -63,6 +63,21 @@
     }
     document.addEventListener("DOMContentLoaded", updateFilterDisclosure);
     document.addEventListener("htmx:load", updateFilterDisclosure);
+    function initializeTrayNavigation() {
+        const menu = document.getElementById("tray-navigation");
+        if (!menu || typeof menu.showPopover !== "function") return;
+        document.body.classList.add("tray-navigation-ready");
+        document.addEventListener("click", event => {
+            const button = event.target.closest(".tray-navigation-toggle");
+            // Native dismissal should return to the invoker, not a phone textarea.
+            if (button && !button.disabled) button.focus({ preventScroll: true });
+        });
+        narrowLayout.addEventListener("change", event => {
+            if (!event.matches && menu.matches(":popover-open")) menu.hidePopover();
+        });
+    }
+    document.addEventListener("DOMContentLoaded", initializeTrayNavigation);
+
     function tagScrollPanel(panel) {
         return narrowLayout.matches && panel.dataset.tagMode === "filter"
             ? panel.querySelector(".tag-filter-panel") : panel;

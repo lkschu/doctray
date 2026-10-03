@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
@@ -79,7 +80,7 @@ func TestAttachmentTemplateOnlyLoadsThumbnail(t *testing.T) {
 	}
 	for _, thumbnailURL := range []string{"", "/media/photo.jpg.thumb.png"} {
 		var rendered bytes.Buffer
-		attachment := docentry_file{Url: "/media/photo.jpg", ThumbnailURL: thumbnailURL, Icon: "imagesmode"}
+		attachment := docentry_file{Url: "/media/photo.jpg", OrgName: "photo.jpg", ThumbnailURL: thumbnailURL, Icon: "imagesmode"}
 		if err := tmpl.ExecuteTemplate(&rendered, "base/doc-url.tmpl", []docentry_file{attachment}); err != nil {
 			t.Fatal(err)
 		}
@@ -90,11 +91,223 @@ func TestAttachmentTemplateOnlyLoadsThumbnail(t *testing.T) {
 		if !strings.Contains(output, `href="/media/photo.jpg"`) {
 			t.Error("original attachment link missing")
 		}
+		if !strings.Contains(output, `aria-label="Open photo.jpg"`) || !strings.Contains(output, `title="photo.jpg"`) {
+			t.Error("attachment links must retain a complete filename when visual labels are truncated")
+		}
 		if thumbnailURL == "" && strings.Contains(output, "<img") {
 			t.Error("template renders an image without a thumbnail")
 		}
 		if thumbnailURL != "" && !strings.Contains(output, `src="`+thumbnailURL+`"`) {
 			t.Error("thumbnail image missing")
+		}
+	}
+}
+
+func TestMessageCardTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := post{DocID: 42, Title: "Message text", Type: "msg", Starred: true,
+		Webpreview: []previewbuilder.URLPreview{{ID: "pending", Pending: true, URL: "https://example.com/?a=1&b=2",
+			Title: "Preview & <title>", Image: "/resources/preview-placeholder.svg", ImageFallback: "https://example.com/favicon"}},
+		Files: []docentry_file{{Url: "/media/photo.jpg", OrgName: "Photo & <notes>.jpg", ThumbnailURL: "/media/photo.jpg.thumb.png"}}}
+	for i := 0; i < 20; i++ {
+		tag := tag{ID: fmt.Sprintf("tag-%d", i), Name: fmt.Sprintf("Tag %d", i), Sym: "📚", Color: "#335599"}
+		message.Tags_enabled = append(message.Tags_enabled, tag_enabled{Tag: &tag, Enabled: i%2 == 0, BackRef: &message})
+	}
+	var rendered bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&rendered, "base/doc.tmpl", message); err != nil {
+		t.Fatal(err)
+	}
+	document, err := htmlparser.Parse(&rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribute := func(node *htmlparser.Node, name string) string {
+		for _, attr := range node.Attr {
+			if attr.Key == name {
+				return attr.Val
+			}
+		}
+		return ""
+	}
+	elements := make(map[string]*htmlparser.Node)
+	tagButtons, actionButtons, thumbnails := 0, 0, 0
+	var visit func(*htmlparser.Node)
+	visit = func(node *htmlparser.Node) {
+		if node.Type == htmlparser.ElementNode {
+			if id := attribute(node, "id"); id != "" {
+				if elements[id] != nil {
+					t.Errorf("duplicate message element ID %q", id)
+				}
+				elements[id] = node
+			}
+			if node.Data == "button" {
+				if attribute(node, "type") != "button" || attribute(node, "aria-label") == "" || attribute(node, "hx-sync") != "#tray-container:drop" || attribute(node, "hx-disabled-elt") != "this" {
+					t.Error("message controls must be labelled native buttons coordinated with list swaps")
+				}
+				if attribute(node, "class") == "doc-entry-tagview-segment" {
+					tagButtons++
+				} else {
+					actionButtons++
+					if attribute(node, "hx-post") == "/tray/doc-delete" && attribute(node, "hx-target") != "closest .doc-entry" {
+						t.Error("Delete must still replace only its message row")
+					}
+				}
+			}
+			if node.Data == "img" {
+				if attribute(node, "src") == "/media/photo.jpg" {
+					t.Error("responsive attachment cards must never load originals as previews")
+				}
+				if attribute(node, "src") == "/media/photo.jpg.thumb.png" {
+					thumbnails++
+				}
+			}
+			if node.Data == "a" && attribute(node, "class") == "doc-entry-file-download" {
+				if attribute(node, "href") != "/media/photo.jpg" || attribute(node, "aria-label") != "Open Photo & <notes>.jpg" {
+					t.Error("attachment links must preserve their original target and untruncated accessible filename")
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(document)
+	if tagButtons != 20 || actionButtons != 2 || thumbnails != 1 {
+		t.Error("responsive cards must retain every tag, both actions and the generated thumbnail")
+	}
+	preview := elements["doc-webpreviews-42"]
+	if preview == nil || attribute(preview, "class") != "doc-entry-web-previews" || attribute(preview, "hx-get") != "/tray/doc-preview/42" || attribute(preview, "hx-trigger") != "every 1s" || attribute(preview, "hx-swap") != "outerHTML" {
+		t.Error("responsive previews must preserve their polling ID, endpoint and fragment swap")
+	}
+	message.Tags_enabled = nil
+	rendered.Reset()
+	if err := tmpl.ExecuteTemplate(&rendered, "base/doc-entry.tmpl", message); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.String(), `class="doc-entry-tagview `) {
+		t.Error("messages without tags must not retain an empty tag strip")
+	}
+}
+
+func TestMessageStarButtonTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, starred := range []bool{false, true} {
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, "base/doc-star.tmpl", post{DocID: 42, Starred: starred}); err != nil {
+			t.Fatal(err)
+		}
+		document, err := htmlparser.Parse(&rendered)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attribute := func(node *htmlparser.Node, name string) string {
+			for _, attr := range node.Attr {
+				if attr.Key == name {
+					return attr.Val
+				}
+			}
+			return ""
+		}
+		buttons := 0
+		var visit func(*htmlparser.Node)
+		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.ElementNode && node.Data == "button" {
+				buttons++
+				if attribute(node, "id") != "doc-star-42" || attribute(node, "type") != "button" || attribute(node, "aria-label") != "Star message 42" || attribute(node, "aria-pressed") != fmt.Sprint(starred) {
+					t.Error("star refreshes must retain a stable ID, label and current pressed state")
+				}
+				if attribute(node, "hx-post") != "/tray/doc-star" || attribute(node, "hx-target") != "closest .doc-entry-button-fav" || attribute(node, "hx-swap") != "outerHTML" || attribute(node, "hx-sync") != "#tray-container:drop" || attribute(node, "hx-vals") != `{"id":42}` {
+					t.Error("star refreshes must preserve the coordinated favourite-only swap")
+				}
+				if node.Parent.Data != "div" || strings.Contains(attribute(node.Parent, "class"), "starred") != starred {
+					t.Error("star response must be the favourite wrapper with its current visual state")
+				}
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				visit(child)
+			}
+		}
+		visit(document)
+		if buttons != 1 || strings.Contains(rendered.String(), "doc-entry-container") {
+			t.Error("star response must contain only its button wrapper, not a full message")
+		}
+	}
+}
+
+func TestMessageTagButtonTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		messageID int
+		name      string
+		symbol    string
+		assigned  bool
+	}{
+		{messageID: 42, name: "Research & <notes>", symbol: "👩🏽‍💻", assigned: true},
+		{messageID: 99, name: "Research & <notes>", symbol: "👩🏽‍💻"},
+		{messageID: 42, name: " ", assigned: true},
+	} {
+		message := post{DocID: test.messageID}
+		tag := tag{ID: "reading", Name: test.name, Sym: test.symbol, Enabled: !test.assigned}
+		var rendered bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&rendered, "base/doc-tagbar-segments.tmpl", tag_enabled{Tag: &tag, Enabled: test.assigned, BackRef: &message}); err != nil {
+			t.Fatal(err)
+		}
+		document, err := htmlparser.Parse(&rendered)
+		if err != nil {
+			t.Fatal(err)
+		}
+		attribute := func(node *htmlparser.Node, name string) string {
+			for _, attr := range node.Attr {
+				if attr.Key == name {
+					return attr.Val
+				}
+			}
+			return ""
+		}
+		buttons := 0
+		var visit func(*htmlparser.Node)
+		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.ElementNode && node.Data == "button" {
+				buttons++
+				if attribute(node, "id") != fmt.Sprintf("doc-tag-%d-reading", test.messageID) || attribute(node, "class") != "doc-entry-tagview-segment" || attribute(node, "type") != "button" {
+					t.Error("tag fragments must remain a native button with a message-specific stable ID")
+				}
+				if attribute(node, "aria-label") != tag.DisplayName() || attribute(node, "title") != tag.DisplayName() || attribute(node, "aria-pressed") != fmt.Sprint(test.assigned) {
+					t.Error("accessible tag name, hover title and pressed state must describe assignment, not the browsing filter")
+				}
+				if attribute(node, "hx-post") != "/tray/post-tag" || attribute(node, "hx-target") != "closest .doc-entry-tagview-segment" || attribute(node, "hx-swap") != "outerHTML" || attribute(node, "hx-sync") != "#tray-container:drop" {
+					t.Error("tag refreshes must still swap only their coordinated button")
+				}
+				var values struct {
+					ID  int    `json:"id"`
+					Tag string `json:"tag"`
+				}
+				if err := json.Unmarshal([]byte(attribute(node, "hx-vals")), &values); err != nil || values.ID != test.messageID || values.Tag != tag.ID {
+					t.Error("tag refreshes must send the same message and stable tag ID")
+				}
+			}
+			for child := node.FirstChild; child != nil; child = child.NextSibling {
+				visit(child)
+			}
+		}
+		visit(document)
+		if buttons != 1 || strings.Contains(rendered.String(), "<notes>") {
+			t.Error("tag fragments must contain one button and safely escape tag names")
+		}
+		if strings.Contains(rendered.String(), "doc-entry-tag-name") || strings.Contains(rendered.String(), "doc-entry-tag-selection") {
+			t.Error("message tags must retain compact symbol-only segments, not named chips")
+		}
+		if test.symbol == "" && !strings.Contains(rendered.String(), ">#</span>") {
+			t.Error("tags without emoji must retain a visible desktop symbol")
 		}
 	}
 }
@@ -440,6 +653,9 @@ func TestTagFilterTemplate(t *testing.T) {
 				}
 			}
 			visit(document)
+			if attribute(elements["tag-container"], "data-tag-mode") != "filter" {
+				t.Error("browsing panels must expose their mode for scoped scroll preservation")
+			}
 			if star := elements["star-filter-button"]; star == nil || attribute(star, "class") != "tag-star-filter" {
 				t.Error("Starred only must be a separate utility control, not a tag chip")
 			}
@@ -498,8 +714,8 @@ func TestTagFilterTemplate(t *testing.T) {
 			if manage == nil {
 				t.Fatal("Manage tags must remain available, including when there are no tags")
 			}
-			if attribute(manage, "hx-post") != "/tray/tag-edit" || attribute(manage, "hx-target") != "#tag-container" {
-				t.Error("Manage tags must open the existing editor without replacing the composer")
+			if attribute(manage, "hx-post") != "/tray/tag-edit" || attribute(manage, "hx-target") != "#tag-container" || attribute(manage, "hx-sync") != "#tray-container:drop" {
+				t.Error("Manage tags must open the existing editor without replacing the composer or racing a shared request")
 			}
 		})
 	}
@@ -606,7 +822,7 @@ func TestTagEditorTemplate(t *testing.T) {
 		}
 		elements := make(map[string]*htmlparser.Node)
 		form := &multipart.Form{Value: make(map[string][]string)}
-		rows, removeButtons := 0, 0
+		rows, removeButtons, fieldLabels := 0, 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
 			if node.Type == htmlparser.ElementNode {
@@ -621,12 +837,18 @@ func TestTagEditorTemplate(t *testing.T) {
 					if attribute(node, "type") != "hidden" && attribute(node, "aria-label") == "" {
 						t.Error("editable inputs need accessible labels")
 					}
+					if attribute(node, "type") != "hidden" && (node.Parent.Data != "label" || attribute(node.Parent, "for") != attribute(node, "id")) {
+						t.Error("editable inputs need associated field labels when narrow layouts hide column headings")
+					}
 					if attribute(node, "maxlength") != "" {
 						t.Error("emoji inputs must not truncate multi-codepoint emoji")
 					}
 				}
 				if attribute(node, "class") == "tag-editor-row" {
 					rows++
+				}
+				if attribute(node, "class") == "tag-editor-label" {
+					fieldLabels++
 				}
 				if attribute(node, "class") == "tag-editor-remove" {
 					removeButtons++
@@ -640,6 +862,9 @@ func TestTagEditorTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
+		if attribute(elements["tag-container"], "data-tag-mode") != "edit" {
+			t.Error("editor panels must expose their mode for narrow workspace layout and scoped scroll preservation")
+		}
 		for _, id := range []string{"tag-editor-form", "tag-add-button", "tag-save-button", "tag-cancel-button"} {
 			if elements[id] == nil {
 				t.Fatalf("editor element %q missing", id)
@@ -661,8 +886,8 @@ func TestTagEditorTemplate(t *testing.T) {
 		if attribute(elements["tag-cancel-button"], "hx-params") != "none" {
 			t.Error("Cancel must not send unapplied editor fields")
 		}
-		if rows != len(draft) || removeButtons != len(draft) {
-			t.Error("each tag must have one row and one removal control")
+		if rows != len(draft) || removeButtons != len(draft) || fieldLabels != 3*len(draft) {
+			t.Error("each tag must have one row, three field labels and one removal control")
 		}
 		if parsed := tagsFromMultiform(form, tags); len(draft) > 0 && !reflect.DeepEqual(parsed, draft) {
 			t.Error("editor round-trips must preserve names, emoji, IDs and filter selections without repeated escaping")
@@ -751,7 +976,7 @@ func TestPurgeDeletedPostsRetry(t *testing.T) {
 		t.Error("cleanup must not touch active uploads")
 	}
 	for _, filename := range []string{filepath.Join(directory, "deleted.bin"), thumbnail.Path(filepath.Join(directory, "deleted.bin"))} {
-		if _, err := os.Stat(filename); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
 			t.Error("successful cleanup must remove original and thumbnail")
 		}
 	}
@@ -810,7 +1035,7 @@ func TestFullTrayLoadPurgesDeletedPosts(t *testing.T) {
 		t.Error("completed cleanup must be persisted")
 	}
 	for _, name := range []string{filename, thumbnail.Path(filename)} {
-		if _, err := os.Stat(name); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Stat(name); !errors.Is(err, os.ErrNotExist) {
 			t.Error("full page load must remove originals and thumbnails")
 		}
 	}

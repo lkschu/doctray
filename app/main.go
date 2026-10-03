@@ -1563,10 +1563,12 @@ func main() {
 			id_str := c.PostForm("id")
 			if id_str == "" {
 				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
+				return
 			}
 			id, err := strconv.Atoi(id_str)
 			if err != nil {
 				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
+				return
 			}
 
 			sub := get_uuid(c)
@@ -1579,14 +1581,7 @@ func main() {
 				}
 				profile.Posts[toggle_star].Starred = !profile.Posts[toggle_star].Starred
 				set_data(profile, sub)
-				c.Header("Content-Type", "text/html")
-				answer := ""
-				if profile.Posts[toggle_star].Starred {
-					answer = "<div class=\"doc-entry-button-fav starred\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
-				} else {
-					answer = "<div class=\"doc-entry-button-fav\"> <button hx-post=\"/tray/doc-star\" hx-vals='{\"id\":" + id_str + "}'hx-target=\"closest .doc-entry-button-fav\" hx-swap=\"outerHTML\">🌟</button> </div>"
-				}
-				c.String(http.StatusOK, answer)
+				c.HTML(http.StatusOK, "base/doc-star.tmpl", profile.Posts[toggle_star])
 			})
 		})
 	}

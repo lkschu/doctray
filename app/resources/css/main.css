@@ -421,6 +421,7 @@ textarea[name=title] {
     display: flex;
     position: relative;
     width: 100%;
+    min-width: 0;
     background-color: var(--debug-c-01);
 	box-sizing: border-box;
 }
@@ -435,169 +436,162 @@ textarea[name=title] {
 	box-sizing: border-box;
 }
 
-.tooltip {
-  /* position: relative; */
-  /* display: inline-block; */
-  /* border-bottom: 1px dotted black; */
-  /* cursor: pointer; */
-}
-.tooltiptext {
-  visibility: hidden;
-  /* width: 130px; */
-  background-color: var(--gray-07);
-  color: #fff;
-  text-align: center;
-  font-size: 12px;
-  border-radius: 6px;
-  padding: 7px;
-  line-height: 1em;
-  position: absolute;
-  z-index: 1;
-  top: -25px;
-  white-space: nowrap;
-  overflow: visible;
-  /* left: 105%; */
-}
-.tooltip:hover .tooltiptext {
-  visibility: visible;
-}
-
 .doc-entry-tagview {
-	width: 100%;
-	box-sizing: border-box;
-	/* flex: 1; */
-	/* background-color: white; */
-	display: flex;
-	border-radius: 0.35rem;
-	transition-property: height, font-size, margin-top, margin-bottom, border-radius;
-	transition-duration: 0.15s;
-	transition-delay: 0.5s;
-	border-color: var(--gray-05);
-	border-style: solid;
-	border-width: 1px;
-	height: 18px;
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    height: 18px;
     font-size: 12px;
-
-	overflow: hidden; /* rounded corners clips children */
-	margin-top: 0;
-	margin-bottom: 2px;
+    margin-top: 0;
+    margin-bottom: 2px;
+    border: 1px solid var(--gray-05);
+    border-radius: 0.35rem;
+    overflow: hidden;
+    transition: height 0.15s 0.5s, font-size 0.15s 0.5s,
+        margin-top 0.15s 0.5s, border-radius 0.15s 0.5s;
 }
-.doc-entry-tagview:hover {
+.doc-entry-tagview:focus-within {
+    height: 36px;
     font-size: 20px;
-    transition-duration: 0.15s;
-    transition-delay: 0.5s;
-	border-radius: 0.65rem;
-	height: 36px;
-	margin-top: -9px;
-	margin-bottom: 2px;
+    margin-top: -9px;
+    border-radius: 0.65rem;
+    transition-delay: 0s;
 }
 .doc-entry-tagview-segment {
-	/* border-radius: 0.65rem; */
-	border-color: var(--gray-05);
-	border-style: solid;
-	border-width: 2px;
-
-    background-color: var(--tray-entry-tag-bg);
-
-    flex: 1;
-    /* center content */
+    flex: 1 1 0;
+    min-width: 0;
+    box-sizing: border-box;
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 0;
+    border: 2px solid var(--gray-05);
+    background: var(--tray-entry-tag-bg);
+    color: var(--gray-08);
+    font: inherit;
+    overflow: hidden;
+    cursor: pointer;
+}
+.doc-entry-tagview-segment[aria-pressed="true"] {
+    background: var(--tag-color, var(--tray-entry-tag-bg));
+}
+.doc-entry-tagview-segment:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: -4px;
+}
+.doc-entry-tag-symbol {
+    flex-shrink: 0;
+    line-height: 1;
+}
+.doc-entry-tagview-segment[aria-pressed="false"] .doc-entry-tag-symbol {
+    color: transparent;
+    font-size: 20px;
+    text-shadow: 0 0 0 #29292977;
+}
+.doc-entry-tagview-segment:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
-.colorfill-greyout {
-  color: transparent;
-  font-size: 20px;
-  text-shadow: 0 0 0 #29292977;
+@media (hover: hover) and (pointer: fine) {
+    .doc-entry-tagview:hover {
+        height: 36px;
+        font-size: 20px;
+        margin-top: -9px;
+        border-radius: 0.65rem;
+    }
+    .doc-entry-stats {
+        transition: margin-bottom 0.15s 0.5s;
+    }
+    .doc-entry-tagview:hover ~ .doc-entry-stats {
+        margin-bottom: -9px;
+    }
+    .doc-entry-button button:hover:not(:disabled) {
+        border-color: var(--color-01);
+    }
 }
-.colorfill-enabled {
-  font-size: 20px;
+.doc-entry-tagview:focus-within ~ .doc-entry-stats {
+    margin-bottom: -9px;
+    transition-delay: 0s;
 }
 
-
+.doc-entry-web-previews {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
 .doc-entry-web-preview {
-	width: 100%;
-	box-sizing: border-box;
-	flex: 1;
-	background-color: var(--tray-entry-webview-bg);
-	display: flex;
-	border-radius: 0.65rem;
-	border-color: var(--gray-02);
-	border-style: solid;
-	border-width: 1px;
-	height: 96px;
-	padding: 6px;
-
-	min-width: 0;
-	max-width: 100%;
-	overflow: hidden;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    width: 100%;
+    min-width: 0;
+    min-height: 96px;
+    box-sizing: border-box;
+    padding: 6px;
+    border: 1px solid var(--gray-02);
+    border-radius: 0.65rem;
+    background-color: var(--tray-entry-webview-bg);
 }
 .doc-entry-web-preview-image{
-    background-color: var(--debug-c-02);
+    flex: 0 0 100px;
 }
 .doc-entry-web-preview-text{
-	width: 100%;
-	box-sizing: border-box;
+    flex: 1;
+    min-width: 0;
     font-size: var(--webpreview-font-size-body);
-	display: flex;
-	justify-content: space-between;
+    display: flex;
     flex-direction: column;
-	height: 85px;
-	overflow: hidden;
-	/* border: 1px solid black; */
-	margin-left: 10px;
+    gap: 0.25rem;
+    overflow-wrap: anywhere;
 }
 
-a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
+.webpreview {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
     text-decoration: none;
     color: inherit;
+}
+.webpreview:focus-visible,
+.doc-entry-file-download:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: -4px;
 }
 
 .doc-entry-web-preview-title{
     color: var(--gray-09);
-	font-weight: bold;
-	line-height: 1.2;
+    font-weight: bold;
+}
+.doc-entry-web-preview-title,
+.doc-entry-web-preview-description {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-height: 1.3;
+    max-height: 2.6em;
+    overflow: hidden;
 }
 .doc-entry-web-preview-description {
-    color: var(--gray-8) !important;
-    /* color: red !important; */
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	line-height: 1.2em;
-	max-height: calc(1.2em * 3);
-	/*  Only works in webkit (not fx not chrome) browsers */
-	/* display: -webkit-box; */
-	/* -webkit-line-clamp: 3; */
-	/* -webkit-box-orient: vertical; */
+    color: var(--gray-08);
 }
 .doc-entry-web-preview-url {
-	width: 100%;
-	max-width: 100%;
-	font-size: var(--webpreview-font-size-body);
-	font-style: italic;
-	line-height: 1.2;
-	color: var(--tray-entry-fg-alt);
-	/* display: -webkit-box; */
-	-webkit-line-clamp: 1;
-	text-decoration: underline;
-	/* TODO: line-height is defined 2x times;*/
-	line-height: 1.2em;
-	max-height: calc(1.2em * 1);
-	/* background-color: rgba(255,255,255,0.2); */
-	/* border: 1px solid var(--gray-02); */
-    padding: 2px 3px 2px 0px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	word-break: break-all;
-	/* INFO: trying to fix overflow of div when url is too long, not working :( */
-	overflow-wrap: anywhere;
-	white-space: nowrap;
+    font-size: var(--webpreview-font-size-url);
+    font-style: italic;
+    line-height: 1.3;
+    color: var(--tray-entry-fg-alt);
+    text-decoration: underline;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .doc-entry-web-preview-image img{
-	display: block;
-	margin: auto;
+    display: block;
+    width: 100%;
+    height: 80px;
+    object-fit: contain;
 }
 
 .doc-entry-type-container a {
@@ -605,24 +599,29 @@ a.webpreview, a:visited.webpreview, a:hover.webpreview, a:active.webpreview {
 }
 .doc-entry-type-container {
     font-size: var(--post-font-size);
-	padding: 5px;
+    min-width: 0;
+    padding: 5px;
     margin-bottom: 0.4rem;
-
-	/* Break long words */
-	word-wrap: break-word;
-	overflow-wrap: break-word;
-	word-break: break-all;
-	white-space: normal;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    white-space: normal;
 }
 .markdown-list-inner *, .markdown-list-outer * {
 	box-shadow: none !important;
 	margin-left: 0;
 }
 .markdown-codeblock {
-	min-width: 16rem;
-	border-radius: 8px;
-	display: block;
-	padding: 8px;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 8px;
+    display: block;
+    margin: 0.5rem 0;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: pre;
 }
 tt {
 	display: inline-block;
@@ -633,8 +632,9 @@ tt {
 	padding: 2px 4px;
 	margin: 8px;
 	border-radius: 4px;
-	/* width: calc(100% -16px); */
+    /* width: calc(100% -16px); */
 	box-sizing: border-box;
+	max-width: 100%;
 }
 /* ul .markdown-list-inner, ul .markdown-list-outer { */
 /* 	/1* padding-inline-start: 0px!important; *1/ */
@@ -663,34 +663,32 @@ tt {
 .doc-entry-files-container{
 	margin: 4px 0 0 0;
 	display: flex;
+	min-width: 0;
 }
 .doc-entry-files{
 	background-color: white;
 	border-radius: 0.65rem;
 	border: 1px solid var(--gray-02);
-	/* flex: 1; */
 	padding: 4px;
+	box-sizing: border-box;
 	max-width: 100%;
 	min-width: 0;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 1rem;
+	gap: 0.5rem;
 }
 .doc-entry-file-container{
 	border-radius: 6px;
-	margin: 4px;
-	padding: 4px 6px;
-	flex: 0;
+	padding: 0.5rem;
+	box-sizing: border-box;
+	width: 100%;
+	height: 100%;
 	background-color: rgba(35,35,85,0.2);
-
+	display: flex;
 	flex-direction: column;
-	justify-content: center;
+	gap: 0.25rem;
 	align-items: center;
 	text-align: center;
-
-	min-width: 120px;
-	width: 140px;
-	height: 70px;
 }
 .doc-entry-file-container:hover {
 	background-color: rgba(165,165,215,0.1);
@@ -698,11 +696,11 @@ tt {
 .doc-entry-file-container > .material-symbols-outlined{
 	display: block;
 	font-size: 52px;
+	line-height: 1;
 	color: var(--gray-07);
-	/* width: 90%; */
-	/* height: 90%; */
 }
 .doc-entry-file-thumbnail {
+	width: 100%;
 	height: 52px;
 }
 .doc-entry-file-thumbnail img {
@@ -712,41 +710,46 @@ tt {
 }
 .doc-entry-file-thumbnail .material-symbols-outlined {
 	font-size: 52px;
+	line-height: 1;
 	color: var(--gray-07);
 }
 .doc-entry-file-thumbnail [hidden] {
 	display: none;
 }
 .doc-entry-file-download {
+	display: block;
+	flex: 0 1 8rem;
+	width: 8rem;
+	min-width: 0;
+	max-width: 100%;
 	text-decoration: none;
 	color: inherit !important;
 }
 .doc-entry-file-name {
 	max-width: 100%;
-	font-size: 11px;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 	overflow: hidden;
-	text-overflow: ellipsis;
-	/* text-align: left; */
-	direction: rtl;
-	word-break: keep-all;
-    white-space: nowrap;
+	max-height: 2.6em;
+	overflow-wrap: anywhere;
 }
 .doc-entry-file-name span{
 	unicode-bidi: plaintext;
 }
 .doc-entry-stats{
-    font-size: 11px;
+    font-size: 0.75rem;
     font-style: italic;
     color: var(--gray-08);
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
     justify-content: space-between;
     background-color: var(--debug-c-04);
     user-select: none;
 	margin-bottom: 0;
-	transition: margin-bottom 0.15s 0.5s;
-}
-.doc-entry-tagview:hover ~ .doc-entry-stats {
-	margin-bottom: -9px;
 }
 .doc-entry-stat-id {
     background-color: var(--debug-c-05);
@@ -757,35 +760,13 @@ tt {
     margin-right: 1.0em;
 }
 .doc-entry-button {
-    /* position: absolute; */
-    /* height: 100%; */
-    /* justify-content: space-between; */
     display: flex;
-    flex-direction: column-reverse;
-    padding: 0;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 0.5rem;
+    margin-left: 0.5rem;
     background-color: var(--debug-c-07);
 }
-
-/* .doc-entry-button-del button { */
-/*     box-shadow: 1px 1px 1px #444; */
-/*     border-width: 0.2px 2px 0.2px 0.2px !important; */
-/*     /1* border-width: 2px 0.5px 0.5px 2px !important; *1/ */
-/*     box-sizing: border-box; */
-/*     border-color: #393939 !important; */
-/*     border-style: solid !important; */
-/* } */
-
-.doc-entry-button-fav.starred button {
-    background-color: var(--gray-07) !important;
-}
-.doc-entry-button-del button,
-.doc-entry-button-fav button
-{
-    margin-top: 4px;
-    margin-left: auto;
-    margin-right: auto;
-}
-
 
 .doc-entry {
     color: var(--tray-entry-fg);
@@ -821,22 +802,33 @@ tt {
     font-weight: 300;
     font-family: monospace;
 }
-.doc-entry button {
-    display: block;
-    align-self: flex-end;
-    background-color: var(--tray-entry-bg);
-    text-align: center;
-    padding: 5px;
+.doc-entry-button button {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    background: #fff;
+    padding: 0.25rem;
     border-radius: 50%;
-    width: 2em;
-    height: 2em;
-    aspect-ratio: 1 / 1;
-    border-width: 0;
-    color: var(--gray-01);
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--gray-05);
+    color: var(--gray-08);
+    font: inherit;
+    font-size: 20px;
+    cursor: pointer;
 }
-.doc-entry button:hover {
-    background-color: var(--gray-03);
-    color: var(--gray-03);
+.doc-entry-button-fav.starred button {
+    background: var(--gray-07);
+    border-color: var(--gray-07);
+    color: #fff;
+}
+.doc-entry-button button:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: 2px;
+}
+.doc-entry-button button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 .doc-entry.doc-type-removed {
 	align-items: center;
@@ -942,5 +934,53 @@ tt {
     }
     .tray-page #footer {
         display: none;
+    }
+    .doc-entry {
+        margin-top: 0.75rem;
+        padding: 0.5rem;
+    }
+    .doc-entry-inlist {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .doc-entry-button {
+        flex-direction: row;
+        justify-content: flex-end;
+        margin-left: 0;
+        padding: 0 6px 6px 0;
+    }
+    .doc-entry-web-preview {
+        min-height: 78px;
+    }
+    .doc-entry-web-preview-image {
+        flex-basis: 64px;
+    }
+    .doc-entry-web-preview-image img {
+        height: 64px;
+    }
+}
+
+/* Touch layouts keep the same segmented strip at its expanded height. */
+@media (max-width: 48rem), (hover: none), (pointer: coarse) {
+    .doc-entry-tagview,
+    .doc-entry-tagview:hover,
+    .doc-entry-tagview:focus-within {
+        height: 36px;
+        font-size: 20px;
+        margin-top: 0;
+        border-radius: 0.65rem;
+        transition: none;
+    }
+    .doc-entry-tagview:hover ~ .doc-entry-stats,
+    .doc-entry-tagview:focus-within ~ .doc-entry-stats {
+        margin-bottom: 0;
+        transition: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .doc-entry-tagview,
+    .doc-entry-stats {
+        transition: none;
     }
 }

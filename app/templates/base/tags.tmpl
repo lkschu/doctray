@@ -1,5 +1,5 @@
 {{ define "base/tags.tmpl" }}
-<div id="tag-container">
+<div id="tag-container" data-tag-mode="{{ if .Tag_edit }}edit{{ else }}filter{{ end }}">
     <link href='/resources/css/tags.css' rel='stylesheet' type='text/css' />
 
     {{ if .Tag_edit }}
@@ -33,7 +33,7 @@
                 hx-target="#workspace-container" hx-swap="outerHTML scroll:#doc-container:bottom">Clear filters</button>
             {{ end }}
             <button class="tag-manage-button" id="tags-edit-button" type="button"
-                hx-post="/tray/tag-edit" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
+                hx-post="/tray/tag-edit" hx-sync="#tray-container:drop" hx-target="#tag-container" hx-swap="outerHTML">Manage tags</button>
         </div>
     </div>
 {{ end }}
@@ -82,12 +82,21 @@
 {{ define "base/tagedit.tmpl" }}
     <li class="tag-editor-row" id="tag-li-{{ .Nr }}">
         <input type="hidden" name="tag[{{ .Nr }}]tag_id" value="{{ .ID }}">
-        <input type="text" class="tag-editor-symbol" id="tag-symbol-{{ .Nr }}" name="tag[{{ .Nr }}]symbol"
-            value="{{ .Sym }}" aria-label="Emoji for {{ .DisplayName }}">
-        <input type="text" id="tag-name-{{ .Nr }}" name="tag[{{ .Nr }}]name"
-            value="{{ .Name }}" placeholder="Tag name" aria-label="Name for {{ .DisplayName }}">
-        <input type="color" id="tag-color-{{ .Nr }}" name="tag[{{ .Nr }}]color"
-            value="{{ if .Color }}{{ .Color }}{{ else }}#777777{{ end }}" aria-label="Colour for {{ .DisplayName }}">
+        <label class="tag-editor-field" for="tag-symbol-{{ .Nr }}">
+            <span class="tag-editor-label">Emoji</span>
+            <input type="text" class="tag-editor-symbol" id="tag-symbol-{{ .Nr }}" name="tag[{{ .Nr }}]symbol"
+                value="{{ .Sym }}" aria-label="Emoji for {{ .DisplayName }}">
+        </label>
+        <label class="tag-editor-field" for="tag-name-{{ .Nr }}">
+            <span class="tag-editor-label">Name</span>
+            <input type="text" id="tag-name-{{ .Nr }}" name="tag[{{ .Nr }}]name"
+                value="{{ .Name }}" placeholder="Tag name" aria-label="Name for {{ .DisplayName }}">
+        </label>
+        <label class="tag-editor-field" for="tag-color-{{ .Nr }}">
+            <span class="tag-editor-label">Colour</span>
+            <input type="color" id="tag-color-{{ .Nr }}" name="tag[{{ .Nr }}]color"
+                value="{{ if .Color }}{{ .Color }}{{ else }}#777777{{ end }}" aria-label="Colour for {{ .DisplayName }}">
+        </label>
         <button class="tag-editor-remove" type="button" aria-label="Remove {{ .DisplayName }}" title="Remove tag">×</button>
     </li>
 {{ end }}

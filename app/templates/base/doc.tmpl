@@ -12,11 +12,13 @@
             <div class="doc-entry-inlist debug">
 
                 <div class="doc-entry-content debug">
-                    <div class="doc-entry-tagview debug">
+                    {{ if .Tags_enabled }}
+                    <div class="doc-entry-tagview debug" role="group" aria-label="Tags for message {{ .DocID }}">
                         {{ range $tagenabled := .Tags_enabled }}
                             {{ template "base/doc-tagbar-segments.tmpl" $tagenabled }}
                         {{ end }}
                     </div>
+                    {{ end }}
 
                     {{ if .Webpreview }}{{ template "base/doc-webpreviews.tmpl" . }}{{ end }}
 
@@ -33,12 +35,10 @@
                     </div>
                 </div>
 
-                <div class="doc-entry-button debug">
+                <div class="doc-entry-button debug" role="group" aria-label="Message actions">
+                    {{ template "base/doc-star.tmpl" . }}
                     <div class="doc-entry-button-del">
-                        <button hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this">🗑️</button>
-                    </div>
-                    <div class="doc-entry-button-fav {{ if .Starred }}starred{{end}}">
-                        <button hx-post="/tray/doc-star" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
+                        <button type="button" aria-label="Delete message {{ .DocID }}" hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span aria-hidden="true">🗑️</span></button>
                     </div>
                 </div>
 
@@ -46,6 +46,15 @@
         </li>
 
     {{ end }}
+{{ end }}
+
+{{ define "base/doc-star.tmpl" }}
+    <div class="doc-entry-button-fav {{ if .Starred }}starred{{ end }}">
+        <button id="doc-star-{{ .DocID }}" type="button" aria-label="Star message {{ .DocID }}"
+            aria-pressed="{{ if .Starred }}true{{ else }}false{{ end }}"
+            hx-post="/tray/doc-star" hx-vals='{"id":{{ .DocID }}}' hx-target="closest .doc-entry-button-fav"
+            hx-swap="outerHTML" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span aria-hidden="true">🌟</span></button>
+    </div>
 {{ end }}
 
 {{ define "base/doc-removed.tmpl" }}
@@ -60,21 +69,23 @@
 
 {{ define "base/doc-tagbar-segments.tmpl" }}
 
-    <div class="doc-entry-tagview-segment tooltip {{ if .Enabled }}{{ else }}colorfill-greyout{{ end }}"
+    <button class="doc-entry-tagview-segment" id="doc-tag-{{ .BackRef.DocID }}-{{ .Tag.ID }}" type="button"
+        aria-label="{{ .Tag.DisplayName }}" aria-pressed="{{ if .Enabled }}true{{ else }}false{{ end }}" title="{{ .Tag.DisplayName }}"
         hx-post="/tray/post-tag" hx-vals='{"id":{{ .BackRef.DocID }}, "tag":"{{ .Tag.ID}}"}'
         hx-target="closest .doc-entry-tagview-segment" hx-swap="outerHTML"
-        style="background-color:{{ if .Enabled }}{{ .Tag.Color }}{{ else }}_{{ end }}">
-        {{ .Tag.Sym }}
-    <div class="tooltiptext">{{ .Tag.Name }}</div></div>
+        hx-sync="#tray-container:drop" hx-disabled-elt="this"
+        style="--tag-color: {{ if .Tag.Color }}{{ .Tag.Color }}{{ else }}#777777{{ end }}">
+        <span class="doc-entry-tag-symbol" aria-hidden="true">{{ if .Tag.Sym }}{{ .Tag.Sym }}{{ else }}#{{ end }}</span>
+    </button>
 {{ end }}
 
 
 {{ define "base/doc-webpreview.tmpl" }}
     {{ range $preview := . }}
-        <a href="{{ $preview.URL }}" target="_blank" class="webpreview">
+        <a href="{{ $preview.URL }}" target="_blank" rel="noopener" class="webpreview">
         <div class="doc-entry-web-preview debug">
             <div class="doc-entry-web-preview-image">
-                <img src="{{ $preview.Image }}" width="100" height="80"{{ if $preview.ImageFallback }} data-fallback-image="{{ $preview.ImageFallback }}" onerror="this.onerror=null;this.src=this.dataset.fallbackImage"{{ end }}>
+                <img src="{{ $preview.Image }}" alt="" width="100" height="80" loading="lazy" decoding="async"{{ if $preview.ImageFallback }} data-fallback-image="{{ $preview.ImageFallback }}" onerror="this.onerror=null;this.src=this.dataset.fallbackImage"{{ end }}>
             </div>
             <div class="doc-entry-web-preview-text">
                 <div class="doc-entry-web-preview-title">
@@ -93,7 +104,7 @@
 {{ end }}
 
 {{ define "base/doc-webpreviews.tmpl" }}
-    <div id="doc-webpreviews-{{ .DocID }}"{{ if .HasPendingPreviews }} hx-get="/tray/doc-preview/{{ .DocID }}" hx-trigger="every 1s" hx-swap="outerHTML"{{ end }}>
+    <div class="doc-entry-web-previews" id="doc-webpreviews-{{ .DocID }}"{{ if .HasPendingPreviews }} hx-get="/tray/doc-preview/{{ .DocID }}" hx-trigger="every 1s" hx-swap="outerHTML"{{ end }}>
         {{ template "base/doc-webpreview.tmpl" .Webpreview }}
     </div>
 {{ end }}
@@ -104,7 +115,7 @@
 		<div class="doc-entry-files debug">
 
 		{{ range $file := . }}
-			<a href="{{ $file.Url }}" target="_blank" class="doc-entry-file-download">
+			<a href="{{ $file.Url }}" target="_blank" rel="noopener" class="doc-entry-file-download" aria-label="Open {{ $file.OrgName }}" title="{{ $file.OrgName }}">
 			<div class="doc-entry-file-container debug">
 				{{ if $file.ThumbnailURL }}
 					<div class="doc-entry-file-thumbnail">

@@ -16,22 +16,63 @@
     // Mutable filter controls must not enter HTMX's queue: their workspace
     // response removes them. Only the persistent composer queues requests.
     let trayRequest = null;
+    let trayFocusID = null;
     function updateWorkspaceControls() {
-        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tag-editor-form button, .doc-entry-button-del button, .doc-entry-undo').forEach(control => {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button, .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
             control.disabled = !!trayRequest;
         });
     }
     document.addEventListener("htmx:beforeRequest", event => {
         if (event.defaultPrevented || !event.target.getAttribute("hx-sync")?.startsWith("#tray-container:")) return;
+        // Disabling a native button can blur it before HTMX preserves focus.
+        trayFocusID = event.target === document.activeElement && event.target.matches('.doc-entry-button-fav button, .doc-entry-tagview-segment, .tag-filter-chip, .tag-star-filter, #clear-filters-button, #tag-add-button')
+            ? event.target.id : null;
         trayRequest = event.detail.xhr;
         updateWorkspaceControls();
     });
     document.addEventListener("htmx:afterRequest", event => {
         if (event.detail.xhr !== trayRequest) return;
+        const focusID = trayFocusID;
+        trayFocusID = null;
         trayRequest = null;
         updateWorkspaceControls();
+        if (focusID && document.visibilityState === "visible" &&
+            (document.activeElement === document.body || document.activeElement?.id === focusID)) {
+            document.getElementById(focusID)?.focus({ preventScroll: true });
+        }
+    });
+    // Do not return to an old button after the user clicks or tabs elsewhere.
+    document.addEventListener("pointerdown", () => { trayFocusID = null; });
+    document.addEventListener("keydown", event => {
+        if (event.key === "Tab" || event.key === "Escape") trayFocusID = null;
+    });
+    document.addEventListener("focusin", event => {
+        // Ignore the body's automatic focus after disabling the initiating button.
+        if (event.target !== document.body && event.target.id !== trayFocusID) trayFocusID = null;
     });
     document.addEventListener("htmx:load", updateWorkspaceControls);
+
+    // Preserve only same-mode panel refreshes, not opening/closing the editor.
+    const tagPanelScroll = new WeakMap();
+    document.addEventListener("htmx:beforeSwap", event => {
+        if (!event.detail.shouldSwap) return;
+        const path = event.detail.requestConfig?.path;
+        const targetID = event.detail.target?.id;
+        const filterRefresh = targetID === "workspace-container" &&
+            ["/tray/tag-toggle-filter", "/tray/star-filter", "/tray/filters-clear"].includes(path);
+        const editorRefresh = targetID === "tag-container" && path === "/tray/tag-create";
+        if (!filterRefresh && !editorRefresh) return;
+        const panel = document.getElementById("tag-container");
+        if (panel) tagPanelScroll.set(event.detail.xhr, { mode: panel.dataset.tagMode, top: panel.scrollTop });
+    });
+    document.addEventListener("htmx:afterSwap", event => {
+        const scroll = tagPanelScroll.get(event.detail.xhr);
+        if (!scroll) return;
+        tagPanelScroll.delete(event.detail.xhr);
+        const panel = document.getElementById("tag-container");
+        if (panel?.dataset.tagMode === scroll.mode) panel.scrollTop = scroll.top;
+    });
+
     document.addEventListener("click", event => {
         const remove = event.target.closest(".tag-editor-remove");
         if (remove && !remove.disabled) remove.closest(".tag-editor-row").remove();

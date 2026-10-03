@@ -252,6 +252,7 @@ input[type="file"] {
     font-size: var(--compose-font-size);
 	min-height: calc(2 * var(--composer-action-size) + var(--composer-action-gap));
 	max-height: min(14rem, 35vh);
+	max-height: min(14rem, 35dvh);
 	line-height: 1.4;
 	font-family: inherit;
     padding: 6px 12px;
@@ -262,6 +263,7 @@ input[type="file"] {
 	padding: 0;
 	margin: 0.25rem 0;
 	max-height: min(8rem, 20vh);
+	max-height: min(8rem, 20dvh);
 	overflow-y: auto;
 	font-size: 0.875rem;
 }
@@ -296,6 +298,15 @@ input[type="file"] {
 .composer-attachments button {
 	margin-left: auto;
 	flex-shrink: 0;
+	min-width: 44px;
+	min-height: 44px;
+	box-sizing: border-box;
+	padding: 0.375rem 0.5rem;
+	border: 1px solid var(--gray-05);
+	border-radius: 6px;
+	background: #fff;
+	font: inherit;
+	cursor: pointer;
 }
 .composer-error {
 	color: #a32020;
@@ -307,6 +318,9 @@ input[type="file"] {
 	flex-direction: column;
 	gap: var(--composer-action-gap);
 	flex-shrink: 0;
+	/* Stay reachable during draft scrolling, with room for the focus outline. */
+	position: sticky;
+	top: 6px;
 }
 .composer-actions button {
 	display: grid;

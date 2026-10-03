@@ -155,7 +155,13 @@ func TestComposerTemplate(t *testing.T) {
 			if attr.Key == "required" {
 				t.Errorf("%s is required, preventing text-only or file-only drafts", id)
 			}
+			if attr.Key == "autofocus" {
+				t.Errorf("%s must not summon a phone keyboard through HTML autofocus", id)
+			}
 		}
+	}
+	if attribute(elements["docUpload-text"], "enterkeyhint") != "enter" {
+		t.Error("phone keyboards must offer Return rather than advertise automatic sending")
 	}
 	if attribute(elements["docUpload-label"], "type") != "button" {
 		t.Error("attachment picker button can submit the draft")

@@ -2,6 +2,17 @@
     // Keep the existing client-side total limit, shared by picker/drop/paste.
     const maxAttachmentBytes = 10 * 1024 * 1024;
 
+    // Input capabilities, not screen width: tablets need the same safeguards.
+    // A hardware keyboard attached to a touch-first device still uses newline.
+    const touchFirstInput = window.matchMedia("(hover: none), (pointer: coarse)");
+
+    function focusComposer() {
+        // Never summon a phone keyboard or focus a background tab on completion.
+        if (touchFirstInput.matches || document.visibilityState !== "visible") return;
+        const textarea = document.getElementById("docUpload-text");
+        if (textarea?.isConnected) textarea.focus({ preventScroll: true });
+    }
+
     // Mutable filter controls must not enter HTMX's queue: their workspace
     // response removes them. Only the persistent composer queues requests.
     let trayRequest = null;
@@ -164,7 +175,7 @@
             updateSendState();
         });
         textarea.addEventListener("keydown", event => {
-            if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
+            if (!touchFirstInput.matches && event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
                 event.preventDefault();
                 if (!submitting) form.requestSubmit();
             }
@@ -240,12 +251,14 @@
                 showError("");
             } else {
                 showError("Could not send the message. Your draft is still here; try again.");
-                if (form.isConnected) textarea.focus({ preventScroll: true });
+                if (form.isConnected) focusComposer();
             }
             updateSendState();
         });
         resizeTextarea(textarea);
         updateSendState();
+        // Replace unconditional HTML autofocus without displacing another field.
+        if (document.activeElement === document.body) focusComposer();
     }
 
     document.addEventListener("DOMContentLoaded", initializeComposer);
@@ -253,9 +266,8 @@
     document.addEventListener("htmx:afterSettle", event => {
         const request = event.detail.requestConfig;
         if (request?.path !== "/tray/doc-create" || request.verb !== "post" || !event.detail.successful) return;
-        // Wait for the message list to settle, then return focus to the composer.
-        const textarea = document.getElementById("docUpload-text");
-        if (textarea) textarea.focus({ preventScroll: true });
+        // Desktop keeps its focus flow; touch-first devices never reopen a keyboard.
+        focusComposer();
     });
     window.addEventListener("resize", () => {
         const textarea = document.getElementById("docUpload-text");

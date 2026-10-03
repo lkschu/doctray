@@ -1031,6 +1031,16 @@ tt {
         margin-top: 6px;
         padding: 6px;
     }
+    .doc-entry.doc-type-removed {
+        padding: 2px 6px;
+        border-width: 1px;
+        gap: 4px;
+        font-size: 0.8125rem;
+    }
+    .doc-entry .doc-entry-undo {
+        min-height: 32px;
+        padding: 2px 8px;
+    }
     .doc-entry-inlist {
         flex-direction: column;
         gap: 0;

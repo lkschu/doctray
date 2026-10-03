@@ -164,7 +164,7 @@ func TestMessageCardTemplate(t *testing.T) {
 	}
 	elements := make(map[string]*htmlparser.Node)
 	tagButtons, actionButtons, thumbnails := 0, 0, 0
-	var mobileDate *htmlparser.Node
+	var mobileDate, desktopDate *htmlparser.Node
 	actionIcons := 0
 	var visit func(*htmlparser.Node)
 	visit = func(node *htmlparser.Node) {
@@ -190,6 +190,9 @@ func TestMessageCardTemplate(t *testing.T) {
 			}
 			if node.Data == "time" && attribute(node, "class") == "doc-entry-mobile-date" {
 				mobileDate = node
+			}
+			if node.Data == "time" && attribute(node, "class") == "doc-entry-stat-date debug" {
+				desktopDate = node
 			}
 			if strings.Contains(attribute(node, "class"), "doc-entry-action-icon") {
 				actionIcons++
@@ -224,6 +227,15 @@ func TestMessageCardTemplate(t *testing.T) {
 	}
 	if attribute(mobileDate.Parent, "class") != "doc-entry-button debug" || attribute(mobileDate, "datetime") != "2000-10-03T14:05:59Z" || attribute(mobileDate, "aria-label") != message.Date || attribute(mobileDate, "title") != message.Date {
 		t.Error("the compact footer timestamp must preserve full accessible and machine-readable dates")
+	}
+	if desktopDate == nil {
+		t.Fatal("desktop cards must expose a machine-readable timestamp for browser localization")
+	}
+	if attribute(mobileDate, "data-date-format") != "compact" || attribute(desktopDate, "data-date-format") != "compact" || attribute(desktopDate, "datetime") != message.DateTime() || attribute(desktopDate, "title") != message.Date || attribute(desktopDate, "aria-label") != message.Date {
+		t.Error("both timestamp layouts must use compact localization while retaining full accessible UTC fallbacks")
+	}
+	if desktopDate.FirstChild == nil || mobileDate.FirstChild == nil || desktopDate.FirstChild.Data != message.CompactDate() || desktopDate.FirstChild.Data != mobileDate.FirstChild.Data {
+		t.Error("desktop and mobile must render the same compact date fallback")
 	}
 	if actionIcons != 2 {
 		t.Error("both message actions must include exactly one shared icon")

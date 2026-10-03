@@ -31,13 +31,13 @@
 
                     <div class="doc-entry-stats debug">
                         <div class="doc-entry-stat-id debug">{{.DocID}}</div>
-                        <div class="doc-entry-stat-date debug">{{ .Date }}</div>
+                        <time class="doc-entry-stat-date debug" data-date-format="compact"{{ with .DateTime }} datetime="{{ . }}"{{ end }} title="{{ .Date }}" aria-label="{{ .Date }}">{{ .CompactDate }}</time>
                     </div>
                 </div>
 
                 <div class="doc-entry-button debug" role="group" aria-label="Message actions">
                     {{ if .Date }}
-                    <time class="doc-entry-mobile-date"{{ with .DateTime }} datetime="{{ . }}"{{ end }} title="{{ .Date }}" aria-label="{{ .Date }}">{{ .CompactDate }}</time>
+                    <time class="doc-entry-mobile-date" data-date-format="compact"{{ with .DateTime }} datetime="{{ . }}"{{ end }} title="{{ .Date }}" aria-label="{{ .Date }}">{{ .CompactDate }}</time>
                     {{ end }}
                     {{ template "base/doc-star.tmpl" . }}
                     <div class="doc-entry-button-del">

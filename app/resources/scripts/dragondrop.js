@@ -6,6 +6,33 @@
     // A hardware keyboard attached to a touch-first device still uses newline.
     const touchFirstInput = window.matchMedia("(hover: none), (pointer: coarse)");
 
+    // Use the browser's timezone (including DST), never an offset or the server's zone.
+    const localDate = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+    const localDateWithYear = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });
+    const localClock = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    const localFullDate = new Intl.DateTimeFormat(undefined, {
+        weekday: "short", day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23", timeZoneName: "short"
+    });
+    function localizePostDates(root = document) {
+        const selector = "time[data-date-format][datetime]";
+        const dates = [...root.querySelectorAll(selector)];
+        if (root.matches?.(selector)) dates.unshift(root);
+        const currentYear = new Date().getFullYear();
+        dates.forEach(element => {
+            const at = new Date(element.dateTime);
+            if (Number.isNaN(at.getTime())) return; // Leave malformed legacy values alone.
+            const full = localFullDate.format(at);
+            const compactDate = at.getFullYear() === currentYear ? localDate : localDateWithYear;
+            element.textContent = element.dataset.dateFormat === "compact"
+                ? `${compactDate.format(at)} · ${localClock.format(at)}` : full;
+            element.title = full;
+            element.setAttribute("aria-label", full);
+        });
+    }
+    document.addEventListener("DOMContentLoaded", () => localizePostDates());
+    document.addEventListener("htmx:load", event => localizePostDates(event.detail.elt));
+
     function focusComposer() {
         // Never summon a phone keyboard or focus a background tab on completion.
         if (touchFirstInput.matches || document.visibilityState !== "visible") return;

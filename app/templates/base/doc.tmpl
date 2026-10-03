@@ -41,7 +41,7 @@
                     {{ end }}
                     {{ template "base/doc-star.tmpl" . }}
                     <div class="doc-entry-button-del">
-                        <button type="button" aria-label="Delete message {{ .DocID }}" hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="doc-entry-action-desktop" aria-hidden="true">🗑️</span><span class="material-symbols-outlined doc-entry-action-mobile" aria-hidden="true">delete</span></button>
+                        <button type="button" aria-label="Delete message {{ .DocID }}" hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="material-symbols-outlined doc-entry-action-icon" aria-hidden="true">delete</span></button>
                     </div>
                 </div>
 
@@ -56,7 +56,7 @@
         <button id="doc-star-{{ .DocID }}" type="button" aria-label="Star message {{ .DocID }}"
             aria-pressed="{{ if .Starred }}true{{ else }}false{{ end }}"
             hx-post="/tray/doc-star" hx-vals='{"id":{{ .DocID }}}' hx-target="closest .doc-entry-button-fav"
-            hx-swap="outerHTML" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="doc-entry-action-desktop" aria-hidden="true">🌟</span><span class="doc-entry-action-mobile" aria-hidden="true">{{ if .Starred }}★{{ else }}☆{{ end }}</span></button>
+            hx-swap="outerHTML" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="doc-entry-action-icon" aria-hidden="true">{{ if .Starred }}★{{ else }}☆{{ end }}</span></button>
     </div>
 {{ end }}
 

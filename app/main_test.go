@@ -165,7 +165,7 @@ func TestMessageCardTemplate(t *testing.T) {
 	elements := make(map[string]*htmlparser.Node)
 	tagButtons, actionButtons, thumbnails := 0, 0, 0
 	var mobileDate *htmlparser.Node
-	mobileIcons := 0
+	actionIcons := 0
 	var visit func(*htmlparser.Node)
 	visit = func(node *htmlparser.Node) {
 		if node.Type == htmlparser.ElementNode {
@@ -191,10 +191,10 @@ func TestMessageCardTemplate(t *testing.T) {
 			if node.Data == "time" && attribute(node, "class") == "doc-entry-mobile-date" {
 				mobileDate = node
 			}
-			if strings.Contains(attribute(node, "class"), "doc-entry-action-mobile") {
-				mobileIcons++
+			if strings.Contains(attribute(node, "class"), "doc-entry-action-icon") {
+				actionIcons++
 				if node.Data != "span" || attribute(node, "aria-hidden") != "true" || node.Parent.Data != "button" {
-					t.Error("mobile action icons must remain decorative children of the labelled native buttons")
+					t.Error("shared action icons must remain decorative children of the labelled native buttons")
 				}
 			}
 			if node.Data == "img" {
@@ -225,8 +225,11 @@ func TestMessageCardTemplate(t *testing.T) {
 	if attribute(mobileDate.Parent, "class") != "doc-entry-button debug" || attribute(mobileDate, "datetime") != "2000-10-03T14:05:59Z" || attribute(mobileDate, "aria-label") != message.Date || attribute(mobileDate, "title") != message.Date {
 		t.Error("the compact footer timestamp must preserve full accessible and machine-readable dates")
 	}
-	if mobileIcons != 2 {
-		t.Error("both message actions must include their lighter mobile icon")
+	if actionIcons != 2 {
+		t.Error("both message actions must include exactly one shared icon")
+	}
+	if strings.Contains(rendered.String(), "doc-entry-action-mobile") || strings.Contains(rendered.String(), "doc-entry-action-desktop") {
+		t.Error("message actions must not duplicate icons for desktop and mobile")
 	}
 	preview := elements["doc-webpreviews-42"]
 	if preview == nil || attribute(preview, "class") != "doc-entry-web-previews" || attribute(preview, "hx-get") != "/tray/doc-preview/42" || attribute(preview, "hx-trigger") != "every 1s" || attribute(preview, "hx-swap") != "outerHTML" {
@@ -272,17 +275,17 @@ func TestMessageStarButtonTemplate(t *testing.T) {
 			}
 			return ""
 		}
-		buttons, mobileIcons := 0, 0
+		buttons, actionIcons := 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
-			if node.Type == htmlparser.ElementNode && strings.Contains(attribute(node, "class"), "doc-entry-action-mobile") {
-				mobileIcons++
+			if node.Type == htmlparser.ElementNode && strings.Contains(attribute(node, "class"), "doc-entry-action-icon") {
+				actionIcons++
 				symbol := "☆"
 				if starred {
 					symbol = "★"
 				}
 				if node.Data != "span" || attribute(node, "aria-hidden") != "true" || node.FirstChild == nil || node.FirstChild.Data != symbol {
-					t.Error("star fragments must retain the decorative mobile star icon in both states")
+					t.Error("star fragments must retain the shared decorative star icon in both states")
 				}
 			}
 			if node.Type == htmlparser.ElementNode && node.Data == "button" {
@@ -302,7 +305,7 @@ func TestMessageStarButtonTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		if buttons != 1 || mobileIcons != 1 || strings.Contains(rendered.String(), "doc-entry-container") {
+		if buttons != 1 || actionIcons != 1 || strings.Contains(rendered.String(), "doc-entry-container") {
 			t.Error("star response must contain only its button wrapper, not a full message")
 		}
 	}

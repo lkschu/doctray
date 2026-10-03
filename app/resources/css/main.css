@@ -1047,8 +1047,9 @@ tt {
         --message-tag-touch-font-size: 18px;
     }
     .doc-entry-button {
+        --message-action-size: 32px;
         flex-direction: row;
-        align-items: center;
+        align-items: flex-end;
         justify-content: flex-end;
         margin-left: 0;
         padding: 0;
@@ -1080,8 +1081,8 @@ tt {
 /* Touch layouts keep the same segmented strip at its expanded height. */
 @media (max-width: 48rem), (hover: none), (pointer: coarse) {
     .doc-entry-button button {
-        width: 44px;
-        height: 44px;
+        width: var(--message-action-size, 44px);
+        height: var(--message-action-size, 44px);
     }
     .doc-entry-tagview,
     .doc-entry-tagview:hover,

@@ -6,7 +6,7 @@
     // response removes them. Only the persistent composer queues requests.
     let trayRequest = null;
     function updateWorkspaceControls() {
-        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tag-editor-form button').forEach(control => {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tag-editor-form button, .doc-entry-button-del button, .doc-entry-undo').forEach(control => {
             control.disabled = !!trayRequest;
         });
     }
@@ -24,6 +24,23 @@
     document.addEventListener("click", event => {
         const remove = event.target.closest(".tag-editor-remove");
         if (remove && !remove.disabled) remove.closest(".tag-editor-row").remove();
+    });
+
+    // Failed Undo stays local to its Removed row; transient failures can retry.
+    document.addEventListener("htmx:afterRequest", event => {
+        const request = event.detail.requestConfig;
+        if (request?.path !== "/tray/doc-restore" || event.detail.successful) return;
+        const button = event.target.closest(".doc-entry-undo");
+        if (!button) return;
+        const message = button.closest(".doc-entry").querySelector(".doc-entry-undo-status");
+        const status = event.detail.xhr.status;
+        if (status === 404 || status === 410) {
+            button.remove();
+            message.textContent = "Cannot restore: the message or an attachment was already removed.";
+        } else {
+            message.textContent = "Could not restore the message. Try again.";
+        }
+        message.hidden = false;
     });
 
     function formatFileSize(bytes) {

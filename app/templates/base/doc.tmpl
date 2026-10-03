@@ -1,6 +1,13 @@
 {{ define "base/doc.tmpl" }}
     <div class="doc-entry-container" id="doc-entry-container-{{.DocID}}">
+        {{ template "base/doc-entry.tmpl" . }}
+    </div>
+{{ end }}
 
+{{ define "base/doc-entry.tmpl" }}
+    {{ if .DeletedAt }}
+        {{ template "base/doc-removed.tmpl" . }}
+    {{ else }}
         <li class="doc-entry doc-type-{{.Type}}">
             <div class="doc-entry-inlist debug">
 
@@ -28,7 +35,7 @@
 
                 <div class="doc-entry-button debug">
                     <div class="doc-entry-button-del">
-                        <button hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true">🗑️</button>
+                        <button hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this">🗑️</button>
                     </div>
                     <div class="doc-entry-button-fav {{ if .Starred }}starred{{end}}">
                         <button hx-post="/tray/doc-star" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry-button-fav" hx-swap="outerHTML">🌟</button>
@@ -38,7 +45,17 @@
             </div>
         </li>
 
-    </div>
+    {{ end }}
+{{ end }}
+
+{{ define "base/doc-removed.tmpl" }}
+    <li class="doc-entry doc-type-removed">
+        <i>Removed</i>
+        <button class="doc-entry-undo" type="button" aria-label="Restore message {{ .DocID }}"
+            hx-post="/tray/doc-restore" hx-vals='{"id":{{ .DocID }},"deleted_at":"{{ .DeletedAt.Format "2006-01-02T15:04:05.999999999Z07:00" }}"}'
+            hx-target="closest .doc-entry" hx-swap="outerHTML" hx-sync="#tray-container:drop" hx-disabled-elt="this">Undo</button>
+        <span class="doc-entry-undo-status" role="status" aria-live="polite" hidden></span>
+    </li>
 {{ end }}
 
 {{ define "base/doc-tagbar-segments.tmpl" }}

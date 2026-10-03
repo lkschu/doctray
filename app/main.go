@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,6 +54,8 @@ const auth_session_duration = 8 * time.Hour
 const maxPreviewsPerMessage = 3
 const previewWorkerCount = 2
 const previewJobQueueSize = 128
+
+var errUndoUnavailable = errors.New("message or attachment is no longer available")
 
 var profileLocks sync.Map
 
@@ -136,9 +137,13 @@ func (queue *previewJobQueue) resolve(job previewJob) {
 
 	persisted := false
 	withProfileLock(job.subject, func() {
-		profile := get_data(job.subject)
+		profile, err := readProfile(job.subject)
+		if err != nil {
+			queue.logger.Error("profile load failed during preview update", "event", "preview.job.profile_failed")
+			return
+		}
 		postIndex := profile.find_post_idx_by_id(job.postID)
-		if postIndex == -1 {
+		if postIndex == -1 || profile.Posts[postIndex].DeletedAt != nil {
 			return
 		}
 		for index := range profile.Posts[postIndex].Webpreview {
@@ -161,6 +166,9 @@ func (queue *previewJobQueue) resolve(job previewJob) {
 
 func (queue *previewJobQueue) enqueuePendingPreviews(subject string, profile profile_data) {
 	for _, post := range profile.Posts {
+		if post.DeletedAt != nil {
+			continue
+		}
 		for _, preview := range post.Webpreview {
 			if preview.Pending {
 				queue.enqueue(previewJob{subject: subject, postID: post.DocID, previewID: preview.ID, url: preview.URL})
@@ -543,15 +551,26 @@ func add_formatting_tags_to_string(s string) string {
 func render_workspace_container_to_html(c *gin.Context) {
 	sub := get_uuid(c)
 	withProfileLock(sub, func() {
-		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", render_all(get_data(sub)))
+		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", renderPosts(get_data(sub), true))
 	})
 }
 
 func render_posts_to_html(c *gin.Context) {
 	sub := get_uuid(c)
 	withProfileLock(sub, func() {
-		c.HTML(http.StatusOK, "base/doc-list.tmpl", render_all(get_data(sub)))
+		c.HTML(http.StatusOK, "base/doc-list.tmpl", renderPosts(get_data(sub), true))
 	})
+}
+
+// Unlike ordinary profile reads, a full tray load ends Undo. Call under the
+// profile lock so restore and cleanup cannot operate on the same post at once.
+func loadTrayProfile(subject string, fullPage bool, logger *slog.Logger) profile_data {
+	profile := get_data(subject)
+	if fullPage {
+		purgeDeletedPosts(&profile, filepath.Join(DATA_BASE_PATH, "uploads", subject), logger)
+	}
+	set_data(profile, subject)
+	return profile
 }
 
 type docentry_file struct {
@@ -562,25 +581,57 @@ type docentry_file struct {
 	ThumbnailURL string `json:"thumbnail_url,omitempty"`
 }
 
-func removeUpload(filename string, logger *slog.Logger) {
+func removeUpload(filename string, logger *slog.Logger) bool {
 	if err := os.Remove(filename); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		// PathError includes the filename and subject; never log it verbatim.
 		logger.Warn("attachment removal failed", "event", "attachment.remove_failed")
+		return false
 	}
+	return true
 }
 
-func removeAttachment(directory string, file docentry_file, logger *slog.Logger) {
+func attachmentPath(directory string, file docentry_file) (string, bool) {
 	if !strings.HasPrefix(file.Url, "/media/") {
-		return
+		return "", false
 	}
 	basename := strings.TrimPrefix(file.Url, "/media/")
 	if basename == "" || basename == "." || basename == ".." || filepath.Base(basename) != basename {
-		logger.Warn("invalid stored attachment path", "event", "attachment.remove_failed")
-		return
+		return "", false
 	}
-	filename := filepath.Join(directory, basename)
-	removeUpload(filename, logger)
-	removeUpload(thumbnail.Path(filename), logger)
+	return filepath.Join(directory, basename), true
+}
+
+func removeAttachment(directory string, file docentry_file, logger *slog.Logger) bool {
+	filename, valid := attachmentPath(directory, file)
+	if !valid {
+		logger.Warn("invalid stored attachment path", "event", "attachment.remove_failed")
+		return false
+	}
+	originalRemoved := removeUpload(filename, logger)
+	thumbnailRemoved := removeUpload(thumbnail.Path(filename), logger)
+	return originalRemoved && thumbnailRemoved
+}
+
+// Called only on full tray loads, under the profile lock. Failed records remain
+// marked so a later load can retry, including after a partially completed purge.
+func purgeDeletedPosts(profile *profile_data, directory string, logger *slog.Logger) {
+	kept := make([]post, 0, len(profile.Posts))
+	for _, message := range profile.Posts {
+		if message.DeletedAt == nil {
+			kept = append(kept, message)
+			continue
+		}
+		removed := true
+		for _, file := range message.Files {
+			if !removeAttachment(directory, file, logger) {
+				removed = false
+			}
+		}
+		if !removed {
+			kept = append(kept, message)
+		}
+	}
+	profile.Posts = kept
 }
 
 func (d docentry_file) String() string {
@@ -733,6 +784,7 @@ type post struct {
 	UrlLL        string                      `json:"url"`
 	Type         string                      `json:"type"`
 	Date         string                      `json:"date"`
+	DeletedAt    *time.Time                  `json:"deleted_at,omitempty"`
 	Starred      bool                        `json:"starred"`
 	Files        []docentry_file             `json:"files"`
 	Webpreview   []previewbuilder.URLPreview `json:"webpreview"`
@@ -741,12 +793,50 @@ type post struct {
 }
 
 func (p post) HasPendingPreviews() bool {
+	if p.DeletedAt != nil {
+		return false
+	}
 	for _, preview := range p.Webpreview {
 		if preview.Pending {
 			return true
 		}
 	}
 	return false
+}
+
+func (p *post) MarkDeleted(at time.Time) {
+	if p.DeletedAt == nil {
+		at = at.UTC()
+		p.DeletedAt = &at
+	}
+}
+
+func (p *post) Restore(directory string, deletedAt time.Time) error {
+	// The timestamp identifies this deletion even if a later full load purges
+	// it and the numeric post ID is reused while another tab still offers Undo.
+	if p.DeletedAt == nil || !p.DeletedAt.Equal(deletedAt) {
+		return errUndoUnavailable
+	}
+	// Another tab may have started cleanup. Never restore a message whose
+	// attachment originals were already removed by a partial purge.
+	for _, file := range p.Files {
+		filename, valid := attachmentPath(directory, file)
+		if !valid {
+			return errUndoUnavailable
+		}
+		info, err := os.Stat(filename)
+		if errors.Is(err, fs.ErrNotExist) {
+			return errUndoUnavailable
+		}
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return errUndoUnavailable
+		}
+	}
+	p.DeletedAt = nil
+	return nil
 }
 
 func (t post) String() string {
@@ -841,9 +931,21 @@ func render_post(p post) post {
 }
 
 func render_all(profile profile_data) profile_data {
+	return renderPosts(profile, false)
+}
+
+// Partial refreshes retain Removed rows with individual Undo controls. Full
+// page loads hide any marked records that failed cleanup, rather than contents.
+func renderPosts(profile profile_data, includeRemoved bool) profile_data {
 	posts := profile.Posts
 	rendered_posts := make([]post, 0)
 	for _, p := range posts {
+		if p.DeletedAt != nil {
+			if includeRemoved {
+				rendered_posts = append(rendered_posts, p)
+			}
+			continue
+		}
 		if profile.Only_favorites && !p.Starred {
 			continue
 		}
@@ -877,27 +979,33 @@ func render_all(profile profile_data) profile_data {
 }
 
 func get_data(sub string) profile_data {
+	profile, err := readProfile(sub)
+	if err != nil {
+		panic("could not read profile")
+	}
+	return profile
+}
+
+func readProfile(sub string) (profile_data, error) {
 	file, err := os.Open(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub))
 	if errors.Is(err, fs.ErrNotExist) {
-		return profile_data{}
+		return profile_data{}, nil
 	}
 	if err != nil {
-		panic(err)
+		return profile_data{}, err
 	}
 	defer file.Close()
 
-	bytes_read := make([]byte, 1024*1024*1) // Up to 1MB of data
-	n, err := file.Read(bytes_read)
-	if err != nil && err != io.EOF {
-		panic(err)
-	}
-	if n == 0 {
-		panic("fail")
+	bytes_read, err := io.ReadAll(file)
+	if err != nil {
+		return profile_data{}, err
 	}
 	// data := make([]test_data, 1)
 	profile_data := profile_data{}
 	profile_data.Tag_map = make(map[string]*tag)
-	json.Unmarshal(bytes_read[0:n], &profile_data)
+	if err := json.Unmarshal(bytes_read, &profile_data); err != nil {
+		return profile_data, err
+	}
 
 	// Validate Tags
 	profile_data.normalize_tag_nrs()
@@ -963,7 +1071,7 @@ func get_data(sub string) profile_data {
 	}
 	profile_data.Posts = posts
 
-	return profile_data
+	return profile_data, nil
 }
 func set_data(profile profile_data, sub string) {
 	profile.normalize_tag_nrs()
@@ -972,10 +1080,32 @@ func set_data(profile profile_data, sub string) {
 		panic(err)
 	}
 
-	err = os.WriteFile(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub), b, 0644)
+	err = writeProfileFile(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub), b)
 	if err != nil {
-		panic(err)
+		// Do not expose the subject-bearing filename in recovery logs.
+		panic("could not save profile")
 	}
+}
+
+func writeProfileFile(filename string, contents []byte) error {
+	// Writers hold the profile lock. Reuse one temporary path so an interrupted
+	// write is overwritten on the next save, rather than accumulating temp files.
+	file, err := os.OpenFile(filename+".tmp", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+	if _, err := file.Write(contents); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), filename)
 }
 
 func resumePendingPreviews(queue *previewJobQueue) {
@@ -990,7 +1120,12 @@ func resumePendingPreviews(queue *previewJobQueue) {
 		}
 		subject := strings.TrimSuffix(entry.Name(), ".json")
 		withProfileLock(subject, func() {
-			queue.enqueuePendingPreviews(subject, get_data(subject))
+			profile, err := readProfile(subject)
+			if err != nil {
+				queue.logger.Error("profile load failed during preview recovery", "event", "preview.resume.profile_failed")
+				return
+			}
+			queue.enqueuePendingPreviews(subject, profile)
 		})
 	}
 }
@@ -1104,8 +1239,7 @@ func main() {
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
 			withProfileLock(sub, func() {
-				profileData := get_data(sub)
-				set_data(profileData, sub)
+				profileData := loadTrayProfile(sub, c.GetHeader("HX-Request") != "true", requestlog.FromGin(c))
 				previewJobs.enqueuePendingPreviews(sub, profileData)
 				c.HTML(http.StatusOK, "posts/tray.tmpl", render_all(profileData))
 			})
@@ -1120,7 +1254,7 @@ func main() {
 			withProfileLock(sub, func() {
 				profile := get_data(sub)
 				postIndex := profile.find_post_idx_by_id(postID)
-				if postIndex == -1 {
+				if postIndex == -1 || profile.Posts[postIndex].DeletedAt != nil {
 					c.Status(http.StatusNotFound)
 					return
 				}
@@ -1149,6 +1283,10 @@ func main() {
 			withProfileLock(sub, func() {
 				profile := get_data(sub)
 				p_idx := profile.find_post_idx_by_id(post_id)
+				if p_idx == -1 || profile.Posts[p_idx].DeletedAt != nil {
+					c.String(http.StatusNotFound, "No such message")
+					return
+				}
 				err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
 				if err != nil {
 					c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
@@ -1356,38 +1494,55 @@ func main() {
 		})
 
 		router_tray.POST("/doc-delete", func(c *gin.Context) {
-			id_str := c.PostForm("id")
-			if id_str == "" {
-				c.String(http.StatusBadRequest, fmt.Sprintln("ERROR! Missing ID!"))
-			}
-			id, err := strconv.Atoi(id_str)
+			id, err := strconv.Atoi(c.PostForm("id"))
 			if err != nil {
-				c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! Can't parse ID:%s!\n", id_str))
+				c.String(http.StatusBadRequest, "Invalid message ID")
+				return
 			}
 
 			sub := get_uuid(c)
 			withProfileLock(sub, func() {
 				profile := get_data(sub)
-				to_drop := -1
-				for i, e := range profile.Posts {
-					if e.DocID == id {
-						to_drop = i
-						break
-					}
-				}
-				if to_drop == -1 {
-					c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
+				message := profile.find_post_by_id(id)
+				if message == nil {
+					c.String(http.StatusNotFound, "No such message")
 					return
 				}
-				for _, f := range profile.Posts[to_drop].Files {
-					removeAttachment(filepath.Join(DATA_BASE_PATH, "uploads", sub), f, requestlog.FromGin(c))
-				}
-				profile.Posts = slices.Delete(profile.Posts, to_drop, to_drop+1)
+				message.MarkDeleted(time.Now())
 				set_data(profile, sub)
-
-				c.Header("Content-Type", "text/html")
-				answer := "<li class=\"doc-entry doc-type-removed\"> <i>Removed</i> </li>"
-				c.String(http.StatusOK, answer)
+				c.HTML(http.StatusOK, "base/doc-removed.tmpl", *message)
+			})
+		})
+		router_tray.POST("/doc-restore", func(c *gin.Context) {
+			id, err := strconv.Atoi(c.PostForm("id"))
+			if err != nil {
+				c.String(http.StatusBadRequest, "Invalid message ID")
+				return
+			}
+			deletedAt, err := time.Parse(time.RFC3339Nano, c.PostForm("deleted_at"))
+			if err != nil {
+				c.String(http.StatusBadRequest, "Invalid deletion timestamp")
+				return
+			}
+			sub := get_uuid(c)
+			withProfileLock(sub, func() {
+				profile := get_data(sub)
+				message := profile.find_post_by_id(id)
+				if message == nil {
+					c.String(http.StatusNotFound, "Message is no longer available")
+					return
+				}
+				if err := message.Restore(filepath.Join(DATA_BASE_PATH, "uploads", sub), deletedAt); err != nil {
+					if errors.Is(err, errUndoUnavailable) {
+						c.String(http.StatusGone, "Message or attachment is no longer available")
+					} else {
+						c.String(http.StatusServiceUnavailable, "Could not access attachments. Try again.")
+					}
+					return
+				}
+				set_data(profile, sub)
+				previewJobs.enqueuePendingPreviews(sub, profile)
+				c.HTML(http.StatusOK, "base/doc-entry.tmpl", render_post(*message))
 			})
 		})
 
@@ -1405,7 +1560,7 @@ func main() {
 			withProfileLock(sub, func() {
 				profile := get_data(sub)
 				toggle_star := profile.find_post_idx_by_id(id)
-				if toggle_star == -1 {
+				if toggle_star == -1 || profile.Posts[toggle_star].DeletedAt != nil {
 					c.String(http.StatusBadRequest, fmt.Sprintf("ERROR! No such ID:%d!", id))
 					return
 				}

@@ -113,42 +113,48 @@
 
 body {
     background-image: linear-gradient(to bottom right, #99f, #36c);
-    margin:0px;
-    padding:0px;
-    min-width:100%;
-    max-width:100%;
-    height: auto;
+    margin: 0;
+    padding: 0;
 }
 
 #page-container {
-  position: relative;
-  min-height: 100vh;
-  max-height: 100vh;
-  /* min-width: 100vw; */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+.tray-page #page-container {
+    height: 100vh;
+    height: 100dvh;
+    /* Extremely short windows may scroll the page rather than clip controls. */
+    min-height: 20rem;
+}
+#welcome-container {
+    flex: 1;
+    min-width: 0;
+    padding: clamp(1rem, 4vw, 3rem) clamp(1rem, 3vw, 2rem);
+    overflow-wrap: anywhere;
 }
 
 #tray-container {
-    position: absolute;
-    top: calc(1% + 2.5rem); /* header height */
-    bottom: calc(1% + 2.5rem); /* footer height */
-    left: 50%;
-    transform: translateX(-50%);
-
-    /* background: #ffff3f; */
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    box-sizing: border-box;
     background: var(--tray-bg);
     border-radius: 1em;
-    width: 85vw;
-    min-width: 30em;
-    max-width: 120em;
-    /* padding: 1em 2em 2em 2em; */
+    width: 85%;
+    max-width: 120rem;
+    margin: 0.75rem auto;
     padding: 0.5em;
-	display: flex;
-	flex-direction: column;
+    display: flex;
+    flex-direction: column;
 }
 #workspace-container {
 	display: flex;
 	flex-direction: column;
 	flex: 1;
+	min-width: 0;
 	min-height: 0;
 	overflow: hidden;
 }
@@ -175,19 +181,12 @@ body {
 
 
 #doc-container {
-    /* position: absolute; */
-    /* right: calc(0% + 2.5rem); */
-    /* top: calc(0% + 2.5rem); */
-    /* margin: 1vh auto; */
-    /* float: right; */
-    /* max-width: 70em; */
     min-width: 0;
 	flex: 1;
 	min-height: 0;
-    /* max-height: 80em; */
     border-radius: 0 0 1em 1em;
     background-color: var(--tray-bg);
-    overflow-y: auto;   /* scroll when to big */
+    overflow-y: auto;
 }
 #doc-container-inner {
     margin: 0;
@@ -825,66 +824,109 @@ tt {
     background-color: var(--gray-03);
     color: var(--gray-03);
 }
+.doc-entry.doc-type-removed {
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+.doc-entry .doc-entry-undo {
+	align-self: center;
+	width: auto;
+	height: auto;
+	min-height: 44px;
+	aspect-ratio: auto;
+	padding: 0.375rem 0.75rem;
+	border: 1px solid var(--color-01);
+	border-radius: 6px;
+	background: #fff;
+	color: var(--color-01);
+	font: inherit;
+	cursor: pointer;
+}
+.doc-entry .doc-entry-undo:hover {
+	background: var(--gray-01);
+	color: var(--color-01);
+}
+.doc-entry .doc-entry-undo:focus-visible {
+	outline: 4px solid var(--color-01);
+	outline-offset: 2px;
+}
+.doc-entry .doc-entry-undo:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.doc-entry-undo-status {
+	flex-basis: 100%;
+	font-size: 0.875rem;
+}
 
 
+#header,
 #footer {
-    bottom: 0;
-    position: absolute;
-    height: 2.5rem;
+    flex-shrink: 0;
     background-color: #333333;
-    width: 100%;
+    color: white;
 }
-#header {
-    top: 0;
-    position: absolute;
-    height: 2.5rem;
-    background-color: #333333;
-    width: 100%;
-}
-#header ul.header {
-    line-height: 2.5rem;
+#header ul.header,
+#footer ul.footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     width: 70%;
-    margin: auto;
-    overflow: hidden;
-    list-style-type: none;
+    margin: 0 auto;
+    list-style: none;
 }
-#header ul.header li {
-    float: left;
-    display: block;
-    color: white;
-    text-align: center;
-    padding: 0 16px;
-    background-color: #333333;
+#header ul.header li,
+#footer ul.footer li {
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
-#header ul.header li a{
-    color: white;
+#header ul.header a {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 0.5rem 1rem;
+    line-height: 1.5;
+    color: inherit;
 }
-#header ul.header li:hover {
+#header ul.header a:hover {
     background-color: #222222;
 }
-
-footer ul.footer {
-    line-height: 2.5rem;
-    width: 70%;
-    margin: auto;
-
-    /* border: solid 1px black; */
-    /* padding: 0px; */
-    /* margin: -3em 0 0 0; */
-    /* margin: 0; */
-    overflow: hidden;
-
-    list-style-type: none;
+#header ul.header a:focus-visible {
+    outline: 4px solid #fff;
+    outline-offset: -4px;
 }
-footer ul.footer li {
-    float: left;
-    display: block;
-    color: white;
-    text-align: center;
-    padding: 0 16px;
-    /* margin: 0 16px; */
-    background-color: #333333;
+#footer ul.footer li {
+    padding: 0.5rem 1rem;
+    line-height: 1.5;
 }
-footer ul.footer li:hover {
+#footer ul.footer li:hover {
     background-color: #111111;
+}
+
+@media (max-width: 48rem) {
+    :root {
+        --width-display-message: 100%;
+    }
+    #tray-container {
+        width: calc(100% - 1rem);
+        margin: 0.5rem auto;
+        padding: 0.25rem;
+    }
+    #doc-container-inner,
+    #uploadform {
+        padding: 0.5rem;
+    }
+    #header ul.header,
+    #footer ul.footer {
+        width: 100%;
+    }
+    #header ul.header a,
+    #footer ul.footer li {
+        padding: 0.5rem;
+    }
+    .tray-page #footer {
+        display: none;
+    }
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"doctray/internal/previewbuilder"
 	"doctray/internal/thumbnail"
@@ -36,6 +38,10 @@ func TestPostHasPendingPreviews(t *testing.T) {
 			post: post{Webpreview: []previewbuilder.URLPreview{{Pending: true}}},
 			want: true,
 		},
+		{
+			name: "deleted pending preview",
+			post: post{DeletedAt: new(time.Time), Webpreview: []previewbuilder.URLPreview{{Pending: true}}},
+		},
 	}
 
 	for _, test := range tests {
@@ -56,8 +62,9 @@ func TestRemoveAttachment(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	attachment := docentry_file{Url: "/media/upload.png"}
 	// Also handles old records with no stored thumbnail URL.
-	removeAttachment(directory, attachment, logger)
-	removeAttachment(directory, attachment, logger)
+	if !removeAttachment(directory, attachment, logger) || !removeAttachment(directory, attachment, logger) {
+		t.Error("attachment removal must succeed even when files are already absent")
+	}
 	for _, filename := range []string{original, thumbnail.Path(original)} {
 		if _, err := os.Stat(filename); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("file still exists after deletion: %v", err)
@@ -241,7 +248,7 @@ func TestTrayLayoutTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		for _, id := range []string{"tray-container", "workspace-container", "doc-container", "uploadform"} {
+		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "uploadform"} {
 			if elements[id] == nil {
 				t.Fatalf("tray element %q missing (tag edit: %t)", id, tagEdit)
 			}
@@ -249,8 +256,16 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		if composerCount != 1 {
 			t.Errorf("tray contains %d composers, want one", composerCount)
 		}
+		for _, id := range []string{"header", "tray-container", "footer"} {
+			if elements[id].Parent != elements["page-container"] {
+				t.Errorf("%s must participate directly in the shared page layout", id)
+			}
+		}
 		if elements["uploadform"].Parent != elements["tray-container"] || elements["workspace-container"].Parent != elements["tray-container"] {
 			t.Error("composer must be a sibling of the replaceable workspace")
+		}
+		if elements["delete-undo"] != nil || elements["delete-undo-button"] != nil {
+			t.Error("tray must not retain the global Undo bar")
 		}
 		for _, fragment := range []string{"posts/workspace-container.tmpl", "base/doc-list.tmpl"} {
 			rendered.Reset()
@@ -261,6 +276,98 @@ func TestTrayLayoutTemplate(t *testing.T) {
 				t.Errorf("%s recreates the composer and would lose its draft", fragment)
 			}
 		}
+	}
+}
+
+func TestResponsivePageTemplates(t *testing.T) {
+	tmpl, err := template.ParseGlob("templates/*/*.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		data    any
+		content string
+		tray    bool
+	}{
+		{name: "posts/tray.tmpl", data: profile_data{}, content: "tray-container", tray: true},
+		{name: "posts/hello.tmpl", data: "Test user", content: "welcome-container"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var rendered bytes.Buffer
+			if err := tmpl.ExecuteTemplate(&rendered, test.name, test.data); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(rendered.String(), "<!DOCTYPE html>") {
+				t.Error("full pages must use standards-mode HTML")
+			}
+			document, err := htmlparser.Parse(&rendered)
+			if err != nil {
+				t.Fatal(err)
+			}
+			attribute := func(node *htmlparser.Node, name string) string {
+				for _, attr := range node.Attr {
+					if attr.Key == name {
+						return attr.Val
+					}
+				}
+				return ""
+			}
+			elements := make(map[string]*htmlparser.Node)
+			viewportCount := 0
+			var body *htmlparser.Node
+			var visit func(*htmlparser.Node)
+			visit = func(node *htmlparser.Node) {
+				if node.Type == htmlparser.ElementNode {
+					if node.Data == "body" {
+						body = node
+					}
+					if id := attribute(node, "id"); id != "" {
+						elements[id] = node
+					}
+					if node.Data == "meta" && attribute(node, "name") == "viewport" {
+						viewportCount++
+						content := attribute(node, "content")
+						settings := make(map[string]string)
+						for _, setting := range strings.Split(content, ",") {
+							key, value, _ := strings.Cut(strings.TrimSpace(setting), "=")
+							settings[key] = value
+						}
+						if settings["width"] != "device-width" || settings["initial-scale"] != "1" || settings["interactive-widget"] != "resizes-content" {
+							t.Error("viewport must use device width and request keyboard-aware resizing")
+						}
+						for _, restricted := range []string{"user-scalable", "maximum-scale", "minimum-scale"} {
+							if _, present := settings[restricted]; present {
+								t.Error("responsive pages must not restrict browser zoom")
+							}
+						}
+					}
+				}
+				for child := node.FirstChild; child != nil; child = child.NextSibling {
+					visit(child)
+				}
+			}
+			visit(document)
+			if viewportCount != 1 {
+				t.Errorf("full page has %d viewport declarations, want one", viewportCount)
+			}
+			if body == nil || (attribute(body, "class") == "tray-page") != test.tray {
+				t.Fatal("only the tray page should use the bounded tray layout and mobile footer rule")
+			}
+			for _, id := range []string{"page-container", "header", "footer", test.content} {
+				if elements[id] == nil {
+					t.Fatalf("page element %q missing", id)
+				}
+			}
+			for _, id := range []string{"header", test.content, "footer"} {
+				if elements[id].Parent != elements["page-container"] || attribute(elements[id], "style") != "" {
+					t.Errorf("%s must use the shared shell without inline layout overrides", id)
+				}
+			}
+			if elements["header"].Data != "nav" || attribute(elements["header"], "aria-label") == "" {
+				t.Error("shared navigation must have a semantic element and accessible name")
+			}
+		})
 	}
 }
 
@@ -557,5 +664,342 @@ func TestTagEditorTemplate(t *testing.T) {
 		if len(draft) == 0 && !strings.Contains(rendered.String(), "No tags yet") {
 			t.Error("empty editors must explain how to add a tag")
 		}
+	}
+}
+
+func TestDeletedPostLifecycle(t *testing.T) {
+	directory := t.TempDir()
+	filename := filepath.Join(directory, "attachment.txt")
+	if err := os.WriteFile(filename, []byte("original contents"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	message := post{DocID: 9, Title: "Keep &amp; restore", Date: "original date", Starred: true,
+		Tags: []string{"reading"}, Files: []docentry_file{{Url: "/media/attachment.txt"}},
+		Webpreview: []previewbuilder.URLPreview{{ID: "preview", Title: "Existing preview"}}}
+	want := message
+	at := time.Date(2026, 9, 30, 12, 0, 0, 0, time.FixedZone("test", 3600))
+	message.MarkDeleted(at)
+	message.MarkDeleted(at.Add(time.Minute))
+	if message.DeletedAt == nil || !message.DeletedAt.Equal(at) || message.DeletedAt.Location() != time.UTC {
+		t.Fatal("Delete must retain its first timestamp in UTC")
+	}
+	encoded, err := json.Marshal(message)
+	if err != nil || !strings.Contains(string(encoded), `"deleted_at"`) {
+		t.Fatal("deletion marker must be persisted")
+	}
+	profile := profile_data{Posts: []post{{DocID: 7, Title: "Live message"}, message}}
+	if rendered := render_all(profile); len(rendered.Posts) != 1 || rendered.Posts[0].DocID != 7 {
+		t.Error("ordinary rendering must hide marked messages")
+	}
+	if len(profile.Posts) != 2 || get_data_new_id(&profile.Posts) != 10 {
+		t.Error("rendering must preserve marked records and their reserved IDs")
+	}
+	if contents, err := os.ReadFile(filename); err != nil || string(contents) != "original contents" {
+		t.Error("Delete and rendering must leave attachment contents untouched")
+	}
+	if err := message.Restore(directory, at); err != nil || !reflect.DeepEqual(message, want) {
+		t.Error("Undo must restore the same message with metadata, attachments and previews intact")
+	}
+	encoded, err = json.Marshal(message)
+	if err != nil || strings.Contains(string(encoded), `"deleted_at"`) {
+		t.Error("restoring must remove the persisted deletion marker")
+	}
+	var legacy post
+	if err := json.Unmarshal([]byte(`{"id":1,"title":"old message"}`), &legacy); err != nil || legacy.DeletedAt != nil {
+		t.Error("existing messages without a deletion marker must remain live")
+	}
+}
+
+func TestPurgeDeletedPostsRetry(t *testing.T) {
+	directory := t.TempDir()
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	for _, basename := range []string{"active.bin", "deleted.bin", "blocked.bin"} {
+		if err := os.WriteFile(filepath.Join(directory, basename), []byte("original"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(thumbnail.Path(filepath.Join(directory, "deleted.bin")), []byte("thumbnail"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A nonempty directory produces a deterministic removal failure, even as root.
+	blockedThumbnail := thumbnail.Path(filepath.Join(directory, "blocked.bin"))
+	if err := os.Mkdir(blockedThumbnail, 0700); err != nil {
+		t.Fatal(err)
+	}
+	blocker := filepath.Join(blockedThumbnail, "blocker")
+	if err := os.WriteFile(blocker, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC()
+	profile := profile_data{Posts: []post{
+		{DocID: 1, Files: []docentry_file{{Url: "/media/active.bin"}}},
+		{DocID: 2, DeletedAt: &at},
+		{DocID: 3, DeletedAt: &at, Files: []docentry_file{{Url: "/media/deleted.bin"}}},
+		{DocID: 4, DeletedAt: &at, Files: []docentry_file{{Url: "/media/blocked.bin"}}},
+	}}
+	purgeDeletedPosts(&profile, directory, logger)
+	if len(profile.Posts) != 2 || profile.Posts[0].DocID != 1 || profile.Posts[1].DocID != 4 || profile.Posts[1].DeletedAt == nil {
+		t.Fatal("cleanup must drop completed records but retain the marked failed record")
+	}
+	if _, err := os.Stat(filepath.Join(directory, "active.bin")); err != nil {
+		t.Error("cleanup must not touch active uploads")
+	}
+	for _, filename := range []string{filepath.Join(directory, "deleted.bin"), thumbnail.Path(filepath.Join(directory, "deleted.bin"))} {
+		if _, err := os.Stat(filename); !errors.Is(err, fs.ErrNotExist) {
+			t.Error("successful cleanup must remove original and thumbnail")
+		}
+	}
+	if err := profile.Posts[1].Restore(directory, at); !errors.Is(err, errUndoUnavailable) || profile.Posts[1].DeletedAt == nil {
+		t.Error("Undo must not restore an attachment message after partial cleanup removed its original")
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	purgeDeletedPosts(&profile, directory, logger)
+	if len(profile.Posts) != 1 || profile.Posts[0].DocID != 1 {
+		t.Error("retry must finish cleanup, tolerating originals already removed")
+	}
+}
+
+func TestFullTrayLoadPurgesDeletedPosts(t *testing.T) {
+	previous := DATA_BASE_PATH
+	DATA_BASE_PATH = t.TempDir()
+	t.Cleanup(func() { DATA_BASE_PATH = previous })
+	const subject = "test-user"
+	directory := filepath.Join(DATA_BASE_PATH, "uploads", subject)
+	for _, folder := range []string{filepath.Join(DATA_BASE_PATH, "data"), directory} {
+		if err := os.MkdirAll(folder, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	filename := filepath.Join(directory, "attachment.txt")
+	for _, name := range []string{filename, thumbnail.Path(filename)} {
+		if err := os.WriteFile(name, []byte("keep until reload"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := time.Now().UTC()
+	profile := profile_data{Posts: []post{
+		{DocID: 1, Title: "Live", Type: doctype_mesage},
+		{DocID: 2, Title: "Deleted", Type: doctype_file, DeletedAt: &at,
+			Files: []docentry_file{{Url: "/media/attachment.txt", OrgName: "attachment.txt"}}},
+	}}
+	set_data(profile, subject)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	if read := get_data(subject); len(read.Posts) != 2 || read.Posts[1].DeletedAt == nil {
+		t.Fatal("ordinary reads must retain deletion markers")
+	}
+	if read := loadTrayProfile(subject, false, logger); len(read.Posts) != 2 {
+		t.Fatal("HTMX tray loads must not purge marked posts")
+	}
+	for _, name := range []string{filename, thumbnail.Path(filename)} {
+		if _, err := os.Stat(name); err != nil {
+			t.Error("ordinary/HTMX reads must leave deleted uploads in place")
+		}
+	}
+	if loaded := loadTrayProfile(subject, true, logger); len(loaded.Posts) != 1 || loaded.Posts[0].DocID != 1 {
+		t.Fatal("full tray load must synchronously purge marked messages")
+	}
+	if saved := get_data(subject); len(saved.Posts) != 1 {
+		t.Error("completed cleanup must be persisted")
+	}
+	for _, name := range []string{filename, thumbnail.Path(filename)} {
+		if _, err := os.Stat(name); !errors.Is(err, fs.ErrNotExist) {
+			t.Error("full page load must remove originals and thumbnails")
+		}
+	}
+}
+
+func TestDeletedPostsSkipPreviewQueue(t *testing.T) {
+	queue := &previewJobQueue{jobs: make(chan previewJob, 2), activeJobs: make(map[string]bool)}
+	at := time.Now().UTC()
+	profile := profile_data{Posts: []post{
+		{DocID: 1, Webpreview: []previewbuilder.URLPreview{{ID: "live", Pending: true}}},
+		{DocID: 2, DeletedAt: &at, Webpreview: []previewbuilder.URLPreview{{ID: "deleted", Pending: true}}},
+	}}
+	queue.enqueuePendingPreviews("test-user", profile)
+	if len(queue.jobs) != 1 {
+		t.Fatal("marked messages must not enqueue preview work")
+	}
+	if job := <-queue.jobs; job.postID != 1 {
+		t.Error("only the live message should be queued")
+	}
+}
+
+func TestWriteProfileFile(t *testing.T) {
+	directory := t.TempDir()
+	filename := filepath.Join(directory, "profile.json")
+	for _, contents := range []string{`{"version":1}`, `{"version":2}`} {
+		if err := writeProfileFile(filename, []byte(contents)); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := os.ReadFile(filename); err != nil || string(got) != contents {
+			t.Error("atomic replacement must write the complete new profile")
+		}
+	}
+	blocked := filepath.Join(directory, "blocked.json")
+	if err := os.Mkdir(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeProfileFile(blocked, []byte("cannot replace a directory")); err == nil {
+		t.Error("failed replacement must report an error")
+	}
+	if got, err := os.ReadFile(filename); err != nil || string(got) != `{"version":2}` {
+		t.Error("failed writes must not damage an existing profile")
+	}
+	if files, err := filepath.Glob(filepath.Join(directory, "*.tmp")); err != nil || len(files) != 0 {
+		t.Error("completed and failed writes must clean up temporary files")
+	}
+}
+
+func TestRestoreDeletionIdentityAndErrors(t *testing.T) {
+	directory := t.TempDir()
+	originalDeletion := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
+	laterDeletion := originalDeletion.Add(time.Minute)
+	message := post{DocID: 9, Title: "Different message with reused ID", DeletedAt: &laterDeletion}
+	if err := message.Restore(directory, originalDeletion); !errors.Is(err, errUndoUnavailable) || message.DeletedAt == nil {
+		t.Error("stale Undo must not restore a different deletion with the same numeric ID")
+	}
+	if err := message.Restore(directory, laterDeletion); err != nil || message.DeletedAt != nil {
+		t.Error("the current deletion timestamp must allow restoration")
+	}
+	if err := message.Restore(directory, originalDeletion); !errors.Is(err, errUndoUnavailable) {
+		t.Error("stale Undo must not operate on a live message")
+	}
+	message.DeletedAt = &laterDeletion
+	message.Files = []docentry_file{{Url: "/media/missing.txt"}}
+	if err := message.Restore(directory, laterDeletion); !errors.Is(err, errUndoUnavailable) {
+		t.Error("missing originals must report permanently unavailable Undo")
+	}
+	// ENAMETOOLONG is a deterministic operational Stat error, unlike missing files.
+	message.Files[0].Url = "/media/" + strings.Repeat("x", 300)
+	if err := message.Restore(directory, laterDeletion); err == nil || errors.Is(err, errUndoUnavailable) || message.DeletedAt == nil {
+		t.Error("operational attachment errors must retain the marker and remain retryable")
+	}
+}
+
+func TestPerMessageUndoTemplate(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/doc-list.tmpl", "templates/base/doc.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := time.Date(2026, 9, 30, 12, 0, 0, 123456789, time.UTC)
+	second := first.Add(time.Minute)
+	profile := profile_data{Only_favorites: true, Posts: []post{
+		{DocID: 1, Title: "Visible message", Starred: true},
+		{DocID: 2, Title: "Secret deleted text", DeletedAt: &first},
+		{DocID: 3, Title: "Other deleted text", DeletedAt: &second,
+			Files: []docentry_file{{Url: "/media/private.txt", OrgName: "secret-file.txt"}}},
+	}}
+	view := renderPosts(profile, true)
+	if len(view.Posts) != 3 || view.Posts[1].DocID != 2 || view.Posts[2].DocID != 3 {
+		t.Fatal("partial refreshes must retain individual Removed rows in original order")
+	}
+	var rendered bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&rendered, "base/doc-list.tmpl", view); err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"Secret deleted text", "Other deleted text", "secret-file.txt", "/media/private.txt"} {
+		if strings.Contains(rendered.String(), secret) {
+			t.Error("Removed rows must not display deleted text or attachment contents")
+		}
+	}
+	document, err := htmlparser.Parse(&rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribute := func(node *htmlparser.Node, name string) string {
+		for _, attr := range node.Attr {
+			if attr.Key == name {
+				return attr.Val
+			}
+		}
+		return ""
+	}
+	undo := make(map[int]string)
+	var visit func(*htmlparser.Node)
+	visit = func(node *htmlparser.Node) {
+		if node.Type == htmlparser.ElementNode && attribute(node, "class") == "doc-entry-undo" {
+			var values struct {
+				ID        int    `json:"id"`
+				DeletedAt string `json:"deleted_at"`
+			}
+			if err := json.Unmarshal([]byte(attribute(node, "hx-vals")), &values); err != nil {
+				t.Fatal(err)
+			}
+			undo[values.ID] = values.DeletedAt
+			if attribute(node, "hx-post") != "/tray/doc-restore" || attribute(node, "hx-target") != "closest .doc-entry" || attribute(node, "hx-swap") != "outerHTML" || attribute(node, "hx-sync") != "#tray-container:drop" {
+				t.Error("individual Undo must restore just its row with coordinated requests")
+			}
+			if node.Parent.Data != "li" || attribute(node.Parent, "class") != "doc-entry doc-type-removed" || attribute(node, "aria-label") == "" {
+				t.Error("labelled Undo button must live directly in its Removed row")
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(document)
+	if len(undo) != 2 || undo[2] != first.Format(time.RFC3339Nano) || undo[3] != second.Format(time.RFC3339Nano) {
+		t.Error("each Removed row must carry its own ID and exact deletion timestamp")
+	}
+	// Restore the second deletion first, without affecting the first deletion.
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, "private.txt"), []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := profile.Posts[2].Restore(directory, second); err != nil {
+		t.Fatal(err)
+	}
+	rendered.Reset()
+	if err := tmpl.ExecuteTemplate(&rendered, "base/doc-entry.tmpl", render_post(profile.Posts[2])); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.String(), "doc-entry-container") || strings.Contains(rendered.String(), "doc-type-removed") || !strings.Contains(rendered.String(), "Other deleted text") {
+		t.Error("restore response must be the live list item, not a nested wrapper or a whole list")
+	}
+	if profile.Posts[1].DeletedAt == nil {
+		t.Error("individual restoration must not alter other removed messages")
+	}
+}
+
+func TestReadProfileAndStartupIsolation(t *testing.T) {
+	previous := DATA_BASE_PATH
+	DATA_BASE_PATH = t.TempDir()
+	t.Cleanup(func() { DATA_BASE_PATH = previous })
+	directory := filepath.Join(DATA_BASE_PATH, "data")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	corrupt := []byte(`{"posts":`)
+	if err := os.WriteFile(filepath.Join(directory, "corrupt.json"), corrupt, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProfile("corrupt"); err == nil {
+		t.Error("invalid profiles must report an error rather than returning usable partial data")
+	}
+	if _, err := readProfile("absent"); err != nil {
+		t.Error("new users without a saved profile must still load normally")
+	}
+	at := time.Now().UTC()
+	large := profile_data{Posts: []post{{DocID: 1, DeletedAt: &at, Title: template.HTML(strings.Repeat("x", 1024*1024+10))}}}
+	set_data(large, "large")
+	if loaded, err := readProfile("large"); err != nil || len(loaded.Posts) != 1 || len(loaded.Posts[0].Title) != len(large.Posts[0].Title) {
+		t.Fatal("valid profiles larger than 1 MiB must load without truncation")
+	}
+	set_data(profile_data{Posts: []post{{DocID: 2, Webpreview: []previewbuilder.URLPreview{{ID: "live", Pending: true}}}}}, "good")
+	queue := &previewJobQueue{jobs: make(chan previewJob, 2), activeJobs: make(map[string]bool), logger: slog.New(slog.NewJSONHandler(io.Discard, nil))}
+	resumePendingPreviews(queue)
+	if len(queue.jobs) != 1 {
+		t.Fatal("startup must skip invalid/deleted profiles while recovering healthy preview jobs")
+	}
+	if job := <-queue.jobs; job.subject != "good" {
+		t.Error("healthy profiles must continue to recover despite a corrupt neighbour")
+	}
+	if loaded, err := readProfile("large"); err != nil || loaded.Posts[0].DeletedAt == nil {
+		t.Error("startup recovery must not purge marked posts")
+	}
+	if contents, err := os.ReadFile(filepath.Join(directory, "corrupt.json")); err != nil || !bytes.Equal(contents, corrupt) {
+		t.Error("invalid profiles must not be overwritten")
 	}
 }

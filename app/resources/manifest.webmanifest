@@ -1,0 +1,24 @@
+{
+  "id": "/tray/",
+  "name": "DocTray",
+  "short_name": "DocTray",
+  "start_url": "/tray/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#335599",
+  "icons": [
+    {
+      "src": "/resources/tray_192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/resources/tray_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

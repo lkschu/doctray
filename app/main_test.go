@@ -748,6 +748,7 @@ func TestResponsivePageTemplates(t *testing.T) {
 			document := parseTestHTML(t, rendered.String())
 			elements := make(map[string]*htmlparser.Node)
 			viewportCount := 0
+			manifestCount, themeCount := 0, 0
 			var body *htmlparser.Node
 			var visit func(*htmlparser.Node)
 			visit = func(node *htmlparser.Node) {
@@ -757,6 +758,18 @@ func TestResponsivePageTemplates(t *testing.T) {
 					}
 					if id := attribute(node, "id"); id != "" {
 						elements[id] = node
+					}
+					if node.Data == "link" && attribute(node, "rel") == "manifest" {
+						manifestCount++
+						if attribute(node, "href") != "/manifest.webmanifest" {
+							t.Error("full pages must reference the same stable public app manifest")
+						}
+					}
+					if node.Data == "meta" && attribute(node, "name") == "theme-color" {
+						themeCount++
+						if attribute(node, "content") != "#335599" {
+							t.Error("browser chrome must use the existing DocTray accent")
+						}
 					}
 					if node.Data == "meta" && attribute(node, "name") == "viewport" {
 						viewportCount++
@@ -783,6 +796,9 @@ func TestResponsivePageTemplates(t *testing.T) {
 			visit(document)
 			if viewportCount != 1 {
 				t.Errorf("full page has %d viewport declarations, want one", viewportCount)
+			}
+			if manifestCount != 1 || themeCount != 1 {
+				t.Error("welcome and tray pages must each expose one manifest and theme colour")
 			}
 			if body == nil || (attribute(body, "class") == "tray-page") != test.tray {
 				t.Fatal("only the tray page should use the bounded tray layout and mobile footer rule")

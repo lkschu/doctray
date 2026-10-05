@@ -1224,8 +1224,7 @@ func main() {
 		requestlog.FromGin(c).Error("request panicked", "event", "http.panic", "panic_type", fmt.Sprintf("%T", recovered))
 		c.AbortWithStatus(http.StatusInternalServerError)
 	}))
-	router.StaticFile("/favicon.ico", "./resources/favicon.ico")
-	router.Static("/resources", "./resources/")
+	registerWebAssets(router)
 	router.LoadHTMLGlob("templates/**/*")
 
 	store := cookie.NewStore([]byte(sessionAuthKey), []byte(sessionEncryptionKey))

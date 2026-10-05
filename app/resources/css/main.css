@@ -379,6 +379,9 @@ input[type="file"] {
     padding: 6px 12px;
     cursor: pointer;
 }
+#uploadform.is-editing #docUpload-text {
+    background-color: color-mix(in srgb, var(--color-01) 12%, #fff);
+}
 textarea[name=title] {
   resize: none;
 }
@@ -774,10 +777,27 @@ tt {
 .doc-entry-button {
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
     flex-shrink: 0;
     gap: 4px;
     margin-left: 0.5rem;
     background-color: var(--debug-c-07);
+}
+.doc-entry-button-top {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.doc-entry-button-del {
+    align-self: flex-end;
+}
+.doc-entry.doc-entry-editing {
+    background-color: color-mix(in srgb, var(--color-01) 12%, var(--tray-entry-bg));
+    /* Replace the raised outer shadow with shading inside the upper/left edges. */
+    box-shadow: inset 2px 1px 5px var(--shadow-bg);
+}
+.doc-entry-editing .doc-entry-button-edit button {
+    color: var(--color-01);
 }
 .doc-entry-mobile-date {
     display: none;
@@ -786,6 +806,9 @@ tt {
     display: inline-block;
     font-size: 20px;
     line-height: 1;
+}
+.doc-entry-button-fav .doc-entry-action-icon {
+    font-size: 24px;
 }
 
 .doc-entry {
@@ -828,10 +851,10 @@ tt {
     place-items: center;
     box-sizing: border-box;
     background: transparent;
-    padding: 0.25rem;
+    padding: 2px;
     border-radius: 6px;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     border: 0;
     color: var(--gray-08);
     font: inherit;
@@ -1065,7 +1088,11 @@ tt {
         color: var(--gray-08);
         overflow-wrap: anywhere;
     }
+    .doc-entry-button-top {
+        display: contents;
+    }
     .doc-entry-button-fav,
+    .doc-entry-button-edit,
     .doc-entry-button-del {
         flex-shrink: 0;
     }

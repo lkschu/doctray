@@ -1268,6 +1268,7 @@ func main() {
 
 	router_tray := router.Group("/tray", auth_handler.Ensure_loggedin())
 	{
+		registerMessageEditing(router_tray, previewJobs)
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
 			withProfileLock(sub, func() {
@@ -1449,27 +1450,7 @@ func main() {
 				return
 			}
 
-			previewURLs := make([]string, 0, maxPreviewsPerMessage)
-			seenPreviewURLs := make(map[string]bool)
-			for _, indexes := range find_url_in_string([]byte(title)) {
-				rawURL := string([]byte(title)[indexes[0]:indexes[1]])
-				normalizedURL, err := urlutil.NormalizeHTTPURL(rawURL)
-				if err != nil || seenPreviewURLs[normalizedURL] {
-					continue
-				}
-				seenPreviewURLs[normalizedURL] = true
-				previewURLs = append(previewURLs, normalizedURL)
-				if len(previewURLs) == maxPreviewsPerMessage {
-					break
-				}
-			}
-			pendingPreviews := make([]previewbuilder.URLPreview, 0, len(previewURLs))
-			for _, previewURL := range previewURLs {
-				preview, err := previewbuilder.PendingURLPreview(previewURL, fmt.Sprintf("%d-%s", time.Now().UnixNano(), rand_seq(8)))
-				if err == nil {
-					pendingPreviews = append(pendingPreviews, preview)
-				}
-			}
+			pendingPreviews := reconcilePostPreviews(title, nil)
 			requestlog.FromGin(c).Info("message creation requested", "event", "message.create.requested", "attachment_count", len(files), "preview_url_count", len(pendingPreviews))
 
 			var uploadErr error

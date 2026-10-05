@@ -39,7 +39,14 @@
                     {{ if .Date }}
                     <time class="doc-entry-mobile-date" data-date-format="compact"{{ with .DateTime }} datetime="{{ . }}"{{ end }} title="{{ .Date }}" aria-label="{{ .Date }}">{{ .CompactDate }}</time>
                     {{ end }}
-                    {{ template "base/doc-star.tmpl" . }}
+                    <div class="doc-entry-button-top">
+                        {{ template "base/doc-star.tmpl" . }}
+                        <div class="doc-entry-button-edit">
+                            <button id="doc-edit-{{ .DocID }}" type="button" aria-label="Edit message {{ .DocID }}" title="Edit message"
+                                data-edit-id="{{ .DocID }}" hx-get="/tray/doc-edit/{{ .DocID }}" hx-trigger="doc-edit-load"
+                                hx-swap="none" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="material-symbols-outlined doc-entry-action-icon" aria-hidden="true">edit</span></button>
+                        </div>
+                    </div>
                     <div class="doc-entry-button-del">
                         <button type="button" aria-label="Delete message {{ .DocID }}" hx-post="/tray/doc-delete" hx-vals='{"id":{{.DocID}}}' hx-target="closest .doc-entry" hx-swap="outerHTML focus-scroll:true" hx-sync="#tray-container:drop" hx-disabled-elt="this"><span class="material-symbols-outlined doc-entry-action-icon" aria-hidden="true">delete</span></button>
                     </div>

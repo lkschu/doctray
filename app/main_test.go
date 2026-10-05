@@ -232,8 +232,8 @@ func TestMessageCardTemplate(t *testing.T) {
 		}
 	}
 	visit(document)
-	if tagButtons != 20 || actionButtons != 2 || thumbnails != 1 {
-		t.Error("responsive cards must retain every tag, both actions and the generated thumbnail")
+	if tagButtons != 20 || actionButtons != 3 || thumbnails != 1 {
+		t.Error("responsive cards must retain every tag, all three actions and the generated thumbnail")
 	}
 	if mobileDate == nil {
 		t.Fatal("mobile cards must retain a timestamp beside their actions")
@@ -250,8 +250,15 @@ func TestMessageCardTemplate(t *testing.T) {
 	if desktopDate.FirstChild == nil || mobileDate.FirstChild == nil || desktopDate.FirstChild.Data != message.CompactDate() || desktopDate.FirstChild.Data != mobileDate.FirstChild.Data {
 		t.Error("desktop and mobile must render the same compact date fallback")
 	}
-	if actionIcons != 2 {
-		t.Error("both message actions must include exactly one shared icon")
+	if actionIcons != 3 {
+		t.Error("all three message actions must include exactly one shared icon")
+	}
+	edit := elements["doc-edit-42"]
+	if edit == nil || attribute(edit, "data-edit-id") != "42" || attribute(edit, "hx-get") != "/tray/doc-edit/42" || attribute(edit, "hx-trigger") != "doc-edit-load" || attribute(edit, "hx-swap") != "none" {
+		t.Fatal("Edit must load source data only after the composer handles any unsent draft")
+	}
+	if attribute(edit.Parent.Parent, "class") != "doc-entry-button-top" || elements["doc-star-42"].Parent.Parent != edit.Parent.Parent {
+		t.Error("Star and Edit must share the top desktop action group")
 	}
 	preview := elements["doc-webpreviews-42"]
 	if preview == nil || attribute(preview, "class") != "doc-entry-web-previews" || attribute(preview, "hx-get") != "/tray/doc-preview/42" || attribute(preview, "hx-trigger") != "every 1s" || attribute(preview, "hx-swap") != "outerHTML" {
@@ -515,7 +522,7 @@ func TestComposerTemplate(t *testing.T) {
 		}
 	}
 	visit(document)
-	for _, id := range []string{"form", "docUpload-text", "docUpload", "docUpload-label", "docUpload-attachments", "docUpload-attachment-summary", "docUpload-error", "upload-button"} {
+	for _, id := range []string{"form", "docUpload-text", "docUpload", "docUpload-label", "docUpload-attachments", "docUpload-attachment-summary", "docUpload-error", "upload-button", "docUpload-edit-id", "docUpload-edit-revision"} {
 		if elements[id] == nil {
 			t.Fatalf("composer element %q missing", id)
 		}
@@ -526,6 +533,11 @@ func TestComposerTemplate(t *testing.T) {
 	}
 	if attribute(form, "hx-sync") != "#tray-container:queue all" {
 		t.Error("sends must serialize with workspace replacements")
+	}
+	for id, name := range map[string]string{"docUpload-edit-id": "id", "docUpload-edit-revision": "revision"} {
+		if attribute(elements[id], "type") != "hidden" || attribute(elements[id], "name") != name || attribute(elements[id], "value") != "" {
+			t.Error("edit fields must start empty and never add visible labels or persisted browser drafts")
+		}
 	}
 	for _, id := range []string{"docUpload-text", "docUpload"} {
 		for _, attr := range elements[id].Attr {

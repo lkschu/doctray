@@ -1,6 +1,8 @@
 {{ define "base/composer.tmpl" }}
 <div id="uploadform">
-    <form class="uploadformform" id="form" aria-busy="false" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-target="#doc-list" hx-swap="beforeend scroll:#doc-container:bottom" hx-sync="#tray-container:queue all">
+    <form class="uploadformform" id="form" aria-label="Compose message" aria-busy="false" hx-post="/tray/doc-create" hx-encoding="multipart/form-data" hx-target="#doc-list" hx-swap="beforeend scroll:#doc-container:bottom" hx-sync="#tray-container:queue all">
+        <input id="docUpload-edit-id" type="hidden" name="id" value="">
+        <input id="docUpload-edit-revision" type="hidden" name="revision" value="">
         <div class="upload-layout-container">
             <div id="upload-container">
                 <div id="drop_zone">

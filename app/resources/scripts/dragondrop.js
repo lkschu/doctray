@@ -45,14 +45,15 @@
     let trayRequest = null;
     let trayFocusID = null;
     function updateWorkspaceControls() {
+        const editing = !!document.getElementById("form")?.dataset.editing;
         document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button:not(.tray-navigation-toggle), .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
-            control.disabled = !!trayRequest;
+            control.disabled = !!trayRequest || (editing && control.matches(".doc-entry-button-edit button"));
         });
     }
     document.addEventListener("htmx:beforeRequest", event => {
         if (event.defaultPrevented || !event.target.getAttribute("hx-sync")?.startsWith("#tray-container:")) return;
         // Disabling a native button can blur it before HTMX preserves focus.
-        trayFocusID = event.target === document.activeElement && event.target.matches('.doc-entry-button-fav button, .doc-entry-tagview-segment, .tag-filter-chip, .tag-star-filter, #clear-filters-button, #tag-add-button')
+        trayFocusID = event.target === document.activeElement && event.target.matches('.doc-entry-button-fav button, .doc-entry-button-edit button, .doc-entry-tagview-segment, .tag-filter-chip, .tag-star-filter, #clear-filters-button, #tag-add-button')
             ? event.target.id : null;
         trayRequest = event.detail.xhr;
         updateWorkspaceControls();
@@ -209,18 +210,91 @@
         const progress = form.querySelector("#progress");
         const sendButton = form.querySelector("#upload-button");
         const sendIcon = sendButton.querySelector(".material-symbols-outlined");
+        const attachmentButton = form.querySelector("#docUpload-label");
+        const attachmentIconElement = attachmentButton.querySelector(".material-symbols-outlined");
+        const editID = form.querySelector("#docUpload-edit-id");
+        const editRevision = form.querySelector("#docUpload-edit-revision");
         let files = [];
         let submitting = false;
+        let editing = null;
+        let pendingEditID = null;
+        let loadingEdit = false;
         let dragDepth = 0;
 
         function updateSendState() {
-            sendButton.disabled = submitting || (!textarea.value.trim() && !files.length);
-            sendButton.classList.toggle("is-sending", submitting);
-            sendIcon.textContent = submitting ? "progress_activity" : "send";
-            const label = submitting ? "Sending message…" : "Send message";
+            const busy = submitting || loadingEdit;
+            const hasContent = !!textarea.value.trim() || (editing ? editing.has_files : !!files.length);
+            const unchanged = editing && textarea.value === editing.text;
+            sendButton.disabled = busy || !hasContent || !!unchanged;
+            attachmentButton.disabled = busy;
+            sendButton.classList.toggle("is-sending", busy);
+            sendIcon.textContent = busy ? "progress_activity" : (editing ? "check" : "send");
+            const label = loadingEdit ? "Loading message…" : (submitting
+                ? (editing ? "Saving changes…" : "Sending message…") : (editing ? "Save changes" : "Send message"));
             sendButton.setAttribute("aria-label", label);
             sendButton.title = label;
-            form.setAttribute("aria-busy", String(submitting));
+            form.setAttribute("aria-busy", String(busy));
+        }
+
+        function highlightEditedMessage() {
+            document.querySelectorAll(".doc-entry-editing").forEach(card => card.classList.remove("doc-entry-editing"));
+            if (editing) document.getElementById(`doc-entry-container-${editing.id}`)
+                ?.querySelector(".doc-entry:not(.doc-type-removed)")?.classList.add("doc-entry-editing");
+        }
+
+        function updateComposerMode() {
+            if (editing) form.dataset.editing = String(editing.id);
+            else delete form.dataset.editing;
+            editID.value = editing ? String(editing.id) : "";
+            editRevision.value = editing ? editing.revision : "";
+            form.setAttribute("hx-post", editing ? "/tray/doc-update" : "/tray/doc-create");
+            // Retarget successful edits just before the swap: filters may have hidden the card.
+            form.setAttribute("hx-swap", editing ? "none" : "beforeend scroll:#doc-container:bottom");
+            form.setAttribute("aria-label", editing ? "Edit message" : "Compose message");
+            textarea.setAttribute("aria-label", editing ? "Edit message" : "Message");
+            form.closest("#uploadform").classList.toggle("is-editing", !!editing);
+            attachmentIconElement.textContent = editing ? "close" : "attach_file";
+            const label = editing ? "Cancel editing" : "Attach files";
+            attachmentButton.setAttribute("aria-label", label);
+            attachmentButton.title = label;
+            fileInput.disabled = !!editing;
+            highlightEditedMessage();
+            updateWorkspaceControls();
+            updateSendState();
+            htmx.process(form);
+        }
+
+        function disableComposerControls(disabled) {
+            form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = disabled; });
+            fileInput.disabled = disabled || !!editing;
+            updateSendState();
+        }
+
+        function requestEdit(id) {
+            const button = document.getElementById(`doc-edit-${id}`);
+            if (!button || button.disabled) {
+                pendingEditID = null;
+                showError("Could not open that message for editing. Try again.");
+                return;
+            }
+            pendingEditID = id;
+            loadingEdit = true;
+            disableComposerControls(true);
+            // A new/swapped card may still be waiting for HTMX's settle pass.
+            htmx.process(button);
+            htmx.trigger(button, "doc-edit-load");
+        }
+
+        function cancelEditing() {
+            if (submitting || loadingEdit) return;
+            editing = null;
+            form.reset();
+            files = [];
+            updateComposerMode();
+            updateAttachments();
+            resizeTextarea(textarea);
+            showError("");
+            focusComposer();
         }
 
         function showError(message) {
@@ -251,7 +325,7 @@
                 remove.textContent = "Remove";
                 remove.setAttribute("aria-label", `Remove ${file.name}`);
                 remove.addEventListener("click", () => {
-                    if (submitting) return;
+                    if (submitting || loadingEdit) return;
                     files.splice(index, 1);
                     updateAttachments();
                     showError("");
@@ -268,7 +342,12 @@
         }
 
         function addFiles(incoming) {
-            if (submitting) return;
+            if (submitting || loadingEdit) return;
+            if (editing) {
+                showError("Attachments cannot be changed while editing. Existing files will be kept.");
+                updateAttachments();
+                return;
+            }
             const combined = [...files, ...incoming];
             if (combined.reduce((total, file) => total + file.size, 0) > maxAttachmentBytes) {
                 showError("Attachments must total 10 MiB or less.");
@@ -282,7 +361,16 @@
             showError("");
         }
 
-        form.querySelector("#docUpload-label").addEventListener("click", () => fileInput.click());
+        attachmentButton.addEventListener("click", () => {
+            if (editing) cancelEditing();
+            else if (!submitting && !loadingEdit) fileInput.click();
+        });
+        document.addEventListener("keydown", event => {
+            if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.keyCode === 229 ||
+                !form.isConnected || !editing || submitting || loadingEdit) return;
+            event.preventDefault();
+            cancelEditing();
+        });
         fileInput.addEventListener("change", () => addFiles(Array.from(fileInput.files)));
         textarea.addEventListener("input", () => {
             resizeTextarea(textarea);
@@ -291,7 +379,7 @@
         textarea.addEventListener("keydown", event => {
             if (!touchFirstInput.matches && event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
                 event.preventDefault();
-                if (!submitting) form.requestSubmit();
+                if (!submitting && !loadingEdit && !sendButton.disabled) form.requestSubmit();
             }
         });
         textarea.addEventListener("paste", event => {
@@ -301,7 +389,7 @@
                 .filter(Boolean);
             if (!images.length) return; // Leave ordinary text paste to the browser.
             event.preventDefault();
-            if (submitting) return;
+            if (submitting || loadingEdit) return;
             addFiles(images);
             const text = event.clipboardData.getData("text/plain");
             if (text) textarea.setRangeText(text, textarea.selectionStart, textarea.selectionEnd, "end");
@@ -315,13 +403,14 @@
         dropZone.addEventListener("dragenter", event => {
             if (!isFileDrag(event)) return;
             event.preventDefault();
+            if (editing || submitting || loadingEdit) return;
             dragDepth += 1;
             dropZone.classList.add("markzone");
         });
         dropZone.addEventListener("dragover", event => {
             if (!isFileDrag(event)) return;
             event.preventDefault();
-            event.dataTransfer.dropEffect = submitting ? "none" : "copy";
+            event.dataTransfer.dropEffect = (submitting || loadingEdit || editing) ? "none" : "copy";
         });
         dropZone.addEventListener("dragleave", () => {
             dragDepth = Math.max(0, dragDepth - 1);
@@ -337,15 +426,16 @@
         });
 
         form.addEventListener("htmx:beforeRequest", event => {
-            if (submitting || (!textarea.value.trim() && !files.length)) {
+            const hasContent = textarea.value.trim() || (editing ? editing.has_files : files.length);
+            if (submitting || loadingEdit || !hasContent || (editing && textarea.value === editing.text)) {
                 event.preventDefault();
-                if (!submitting) showError("Write a message or attach a file first.");
+                pendingEditID = null;
+                if (!submitting && !loadingEdit && !hasContent) showError("A message needs text or an attachment.");
                 return;
             }
             showError("");
             submitting = true;
-            form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = true; });
-            updateSendState();
+            disableComposerControls(true);
             progress.value = 0;
             progress.hidden = false;
         });
@@ -353,24 +443,78 @@
             if (event.detail.total > 0) progress.value = event.detail.loaded / event.detail.total * 100;
         });
         form.addEventListener("htmx:afterRequest", event => {
+            const wasEditing = !!editing;
             submitting = false;
-            form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = false; });
+            disableComposerControls(false);
             progress.hidden = true;
             if (event.detail.successful) {
-                // The card is appended (or hidden by filters); clear only the sent draft.
+                // Nothing is persisted merely by opening/cancelling an edit.
+                const nextEdit = pendingEditID;
+                pendingEditID = null;
+                editing = null;
                 form.reset();
                 files = [];
+                if (wasEditing) updateComposerMode();
                 updateAttachments();
                 resizeTextarea(textarea);
                 showError("");
-                // A filtered-out save has no swap/afterSettle event.
-                if (event.detail.xhr.status === 204) focusComposer();
+                if (nextEdit !== null) {
+                    // Wait for HTMX's create request and shared lock to finish first.
+                    queueMicrotask(() => { if (form.isConnected) requestEdit(nextEdit); });
+                } else if (wasEditing || event.detail.xhr.status === 204) focusComposer();
             } else {
-                showError("Could not send the message. Your draft is still here; try again.");
+                const startingEdit = pendingEditID !== null;
+                pendingEditID = null;
+                const status = event.detail.xhr.status;
+                showError(wasEditing ? (status === 409
+                    ? "Message changed. Cancel and reopen it before saving."
+                    : (status === 404 || status === 410 ? "Message is no longer available. Cancel editing."
+                        : "Could not save the changes. Your edit is still here; try again."))
+                    : (startingEdit ? "Could not send the draft. Your draft is still here; editing has not started."
+                        : "Could not send the message. Your draft is still here; try again."));
                 if (form.isConnected) focusComposer();
             }
             updateSendState();
         });
+        document.addEventListener("click", event => {
+            const button = event.target.closest(".doc-entry-button-edit button");
+            if (!button || button.disabled || editing || submitting || loadingEdit || pendingEditID !== null) return;
+            const id = Number(button.dataset.editId);
+            if (textarea.value.trim() || files.length) {
+                pendingEditID = id;
+                form.requestSubmit();
+            } else requestEdit(id);
+        });
+        document.addEventListener("htmx:afterRequest", event => {
+            if (!event.target.matches?.(".doc-entry-button-edit button") || !loadingEdit) return;
+            loadingEdit = false;
+            if (event.detail.successful) {
+                try {
+                    const data = JSON.parse(event.detail.xhr.responseText);
+                    if (data.id !== pendingEditID || typeof data.text !== "string" || typeof data.revision !== "string" || typeof data.has_files !== "boolean") throw new Error("Invalid edit response");
+                    editing = data;
+                    textarea.value = data.text;
+                    showError("");
+                    updateComposerMode();
+                    resizeTextarea(textarea);
+                } catch {
+                    showError("Could not open the message for editing. Try again or reload.");
+                }
+            } else showError("Could not open the message for editing. It may have been removed; try reloading.");
+            pendingEditID = null;
+            disableComposerControls(false);
+            if (editing) focusComposer();
+        });
+        document.addEventListener("htmx:beforeSwap", event => {
+            if (event.detail.requestConfig?.path !== "/tray/doc-update" || !editing || event.detail.xhr.status !== 200) return;
+            const card = document.getElementById(`doc-entry-container-${editing.id}`);
+            event.detail.shouldSwap = !!card;
+            if (card) {
+                event.detail.target = card;
+                event.detail.swapOverride = "innerHTML";
+            }
+        });
+        document.addEventListener("htmx:load", highlightEditedMessage);
         resizeTextarea(textarea);
         updateSendState();
         // Replace unconditional HTML autofocus without displacing another field.
@@ -401,7 +545,7 @@
         } else if (Date.now() - lastActive > 15 * 60 * 1000) {
             const form = document.getElementById("form");
             const hasDraft = form && (form.querySelector("#docUpload-text").value.length ||
-                form.querySelector("#docUpload").files.length || form.getAttribute("aria-busy") === "true");
+                form.querySelector("#docUpload").files.length || form.dataset.editing || form.getAttribute("aria-busy") === "true");
             if (!hasDraft) location.reload();
         }
     });

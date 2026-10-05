@@ -1,0 +1,25 @@
+{{ define "posts/share-error.tmpl" }}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <title>Share not saved · DocTray</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#335599" />
+    <link href="/resources/css/main.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+<div id="page-container">
+    {{ template "base/header.tmpl" }}
+    <main id="welcome-container">
+        <h1>Share not saved</h1>
+        <p>{{ .Message }}</p>
+        {{ if .LoginRequired }}
+        <p><a href="/login">Log in</a>, then return to the other app and share again.</p>
+        {{ else }}
+        <p><a href="/tray/">Return to the tray</a></p>
+        {{ end }}
+    </main>
+    {{ template "base/footer.tmpl" }}
+{{ end }}

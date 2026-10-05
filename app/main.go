@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"path"
 	// "path/filepath"
 
 	"encoding/json"
@@ -1093,17 +1092,19 @@ func preparePostView(p *post, tags []tag, tagMap map[string]*tag) {
 }
 
 func set_data(profile profile_data, sub string) {
-	profile.normalize_tag_nrs()
-	b, err := json.Marshal(profile)
-	if err != nil {
-		panic(err)
-	}
-
-	err = writeProfileFile(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub), b)
-	if err != nil {
+	if err := writeProfile(profile, sub); err != nil {
 		// Do not expose the subject-bearing filename in recovery logs.
 		panic("could not save profile")
 	}
+}
+
+func writeProfile(profile profile_data, sub string) error {
+	profile.normalize_tag_nrs()
+	b, err := json.Marshal(profile)
+	if err != nil {
+		return err
+	}
+	return writeProfileFile(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub), b)
 }
 
 func writeProfileFile(filename string, contents []byte) error {
@@ -1241,6 +1242,7 @@ func main() {
 	router.GET("/login", auth_handler.Login()) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
 	router.GET("/callback", auth_handler.Callback_handler())
 	router.GET("/logout", auth_handler.LogoutWithRedirect("/"))
+	registerTextSharing(router, auth_handler.GetUserID, previewJobs)
 
 	// Allow access to / for unauthenticated users, but authenticated users will be greated by name.
 	router.GET("/", func(c *gin.Context) {
@@ -1437,70 +1439,25 @@ func main() {
 				c.String(http.StatusBadRequest, "get form err: %s", err.Error())
 				return
 			}
+			defer form.RemoveAll()
 			sub := get_uuid(c)
 			files := form.File["files"]
 			titles := form.Value["title"]
 			title := ""
 			if len(titles) > 0 {
-				title = html.EscapeString(strings.ReplaceAll(strings.TrimSpace(titles[0]), "\r", ""))
+				title = titles[0]
 			}
-			if len(files) == 0 && title == "" {
+			if len(files) == 0 && strings.TrimSpace(title) == "" {
 				c.String(http.StatusBadRequest, "Empty message!\n")
 				return
 			}
 
-			pendingPreviews := reconcilePostPreviews(title, nil)
-			requestlog.FromGin(c).Info("message creation requested", "event", "message.create.requested", "attachment_count", len(files), "preview_url_count", len(pendingPreviews))
-
-			var uploadErr error
-			withProfileLock(sub, func() {
-				logger := requestlog.FromGin(c).With("component", "thumbnail")
-				createdPaths := []string{}
-				persisted := false
-				defer func() {
-					if !persisted {
-						for _, filename := range createdPaths {
-							removeUpload(filename, logger)
-						}
-					}
-				}()
-				profile := get_data(sub)
-				docID := get_data_new_id(&profile.Posts)
-				now := time.Now().UTC()
-				newPost := post{DocID: docID, Title: template.HTML(title), Type: doctype_mesage, Date: now.Format(http.TimeFormat), Webpreview: pendingPreviews}
-				if len(files) > 0 {
-					newPost.Type = doctype_file
-					for _, file := range files {
-						basename := fmt.Sprintf("%d__%d__%s", docID, now.UnixMilli(), rand_seq(8)) + path.Ext(file.Filename)
-						filename := DATA_BASE_PATH + "/uploads/" + sub + "/" + basename
-						createdPaths = append(createdPaths, filename)
-						if err := c.SaveUploadedFile(file, filename); err != nil {
-							uploadErr = err
-							return
-						}
-						attachment := docentry_file{Url: "/media/" + basename, OrgName: path.Base(file.Filename), Name: basename}
-						thumbnailPath, err := thumbnail.Create(filename)
-						if err == nil {
-							attachment.ThumbnailURL = "/media/" + filepath.Base(thumbnailPath)
-							createdPaths = append(createdPaths, thumbnailPath)
-						} else if errors.Is(err, thumbnail.ErrUnsupported) || errors.Is(err, thumbnail.ErrTooLarge) {
-							logger.Debug("attachment thumbnail skipped", "event", "thumbnail.skipped", "reason", err.Error())
-						} else {
-							logger.Warn("attachment thumbnail failed", "event", "thumbnail.failed")
-						}
-						newPost.Files = append(newPost.Files, attachment)
-					}
-				}
-				profile.Posts = append(profile.Posts, newPost)
-				set_data(profile, sub)
-				persisted = true
-				previewJobs.enqueuePendingPreviews(sub, profile)
-				renderCreatedPost(c, profile, newPost)
-			})
-			if uploadErr != nil {
-				c.String(http.StatusBadRequest, "upload file err: %s", uploadErr.Error())
+			profile, newPost, err := createMessage(c, sub, title, files, previewJobs)
+			if err != nil {
+				c.String(http.StatusInternalServerError, "Could not save the message. Your draft is still here; try again.")
 				return
 			}
+			renderCreatedPost(c, profile, newPost)
 		})
 
 		router_tray.POST("/doc-delete", func(c *gin.Context) {

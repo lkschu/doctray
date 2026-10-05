@@ -736,6 +736,7 @@ func TestResponsivePageTemplates(t *testing.T) {
 	}{
 		{name: "posts/tray.tmpl", data: profile_data{}, content: "tray-container", tray: true},
 		{name: "posts/hello.tmpl", data: "Test user", content: "welcome-container"},
+		{name: "posts/share-error.tmpl", data: gin.H{"Message": "Nothing was saved.", "LoginRequired": true}, content: "welcome-container"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var rendered bytes.Buffer

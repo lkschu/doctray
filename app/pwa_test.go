@@ -37,7 +37,12 @@ func TestPWAInstallationAssets(t *testing.T) {
 		Display         string `json:"display"`
 		ThemeColor      string `json:"theme_color"`
 		BackgroundColor string `json:"background_color"`
-		ShareTarget     json.RawMessage `json:"share_target"`
+		ShareTarget     struct {
+			Action  string            `json:"action"`
+			Method  string            `json:"method"`
+			Enctype string            `json:"enctype"`
+			Params  map[string]string `json:"params"`
+		} `json:"share_target"`
 		Icons           []struct {
 			Src     string `json:"src"`
 			Sizes   string `json:"sizes"`
@@ -51,8 +56,9 @@ func TestPWAInstallationAssets(t *testing.T) {
 	if manifest.ID != "/tray/" || manifest.StartURL != "/tray/" || manifest.Scope != "/" || manifest.Name != "DocTray" || manifest.ShortName != "DocTray" || manifest.Display != "standalone" || manifest.ThemeColor != "#335599" || manifest.BackgroundColor != "#ffffff" {
 		t.Error("installation must retain stable identity, launch at the tray and cover the local login/navigation routes")
 	}
-	if len(manifest.ShareTarget) != 0 {
-		t.Error("the installation slice must not advertise an unimplemented share receiver")
+	share := manifest.ShareTarget
+	if share.Action != "/tray/share" || share.Method != "POST" || share.Enctype != "multipart/form-data" || len(share.Params) != 3 || share.Params["title"] != "title" || share.Params["text"] != "text" || share.Params["url"] != "url" {
+		t.Error("Android must send text/link shares to the implemented multipart receiver, without advertising files yet")
 	}
 	if len(manifest.Icons) != 2 {
 		t.Fatal("installation needs both 192px and 512px PNG icons")

@@ -408,6 +408,14 @@ func BuildURLPreview(ctx context.Context, logger *slog.Logger, inputURL, tmdbAPI
 	}
 	logger = logger.With("component", "previewbuilder")
 
+	if preview, handled, err := youtubeOEmbedPreview(ctx, inputURL); handled {
+		if err == nil {
+			logger.Info("preview resolved", "event", "preview.resolved", "host", preview.Domain, "source", "youtube_oembed")
+			return preview, nil
+		}
+		// Request errors can contain the video URL; log only a stable category.
+		logger.Warn("preview fallback", "event", "preview.fallback", "host", previewHost(inputURL), "reason", "youtube_oembed_error")
+	}
 	if preview, handled := redditOEmbedPreview(ctx, inputURL); handled {
 		logger.Info("preview resolved", "event", "preview.resolved", "host", preview.Domain, "source", "reddit_oembed")
 		return preview, nil

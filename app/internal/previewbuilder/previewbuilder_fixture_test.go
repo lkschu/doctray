@@ -38,6 +38,12 @@ func TestSavedPreviewFixtures(t *testing.T) {
 			sourceURL: "https://www.youtube.com/watch?v=AZmql5nbTl0",
 		},
 		{
+			name:      "youtube-watch-oembed",
+			filename:  "youtube-watch.html",
+			sourceURL: "https://www.youtube.com/watch?v=AZmql5nbTl0",
+			oEmbed:    "youtube-watch.oembed.json",
+		},
+		{
 			name:      "youtube-shorts",
 			filename:  "youtube-shorts.html",
 			sourceURL: "https://www.youtube.com/shorts/QGcIMmgB6_8",
@@ -84,15 +90,23 @@ func TestSavedPreviewFixtures(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				preview, handled := redditOEmbedPreviewFromReader(pageURL, bytes.NewReader(oEmbed))
-				if !handled {
-					t.Fatal("saved oEmbed response did not produce a preview")
-				}
-				extraction = previewExtraction{
-					Preview:           preview,
-					TitleSource:       "reddit oEmbed",
-					DescriptionSource: "reddit URL",
-					ImageSource:       "reddit oEmbed favicon",
+				if _, _, youtube := youtubeVideoURL(fixture.sourceURL); youtube {
+					preview, err := youtubeOEmbedPreviewFromReader(pageURL, bytes.NewReader(oEmbed))
+					if err != nil {
+						t.Fatalf("saved YouTube oEmbed response failed: %v", err)
+					}
+					extraction = previewExtraction{Preview: preview, TitleSource: "YouTube oEmbed", DescriptionSource: "YouTube channel", ImageSource: "YouTube oEmbed thumbnail"}
+				} else {
+					preview, handled := redditOEmbedPreviewFromReader(pageURL, bytes.NewReader(oEmbed))
+					if !handled {
+						t.Fatal("saved oEmbed response did not produce a preview")
+					}
+					extraction = previewExtraction{
+						Preview:           preview,
+						TitleSource:       "reddit oEmbed",
+						DescriptionSource: "reddit URL",
+						ImageSource:       "reddit oEmbed favicon",
+					}
 				}
 			} else {
 				extraction, err = extractPreview(body, pageURL)

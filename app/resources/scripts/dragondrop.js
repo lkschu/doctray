@@ -49,6 +49,7 @@
         document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button:not(.tray-navigation-toggle), .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
             control.disabled = !!trayRequest || (editing && control.matches(".doc-entry-button-edit button"));
         });
+        updateTagEditorRows();
     }
     document.addEventListener("htmx:beforeRequest", event => {
         if (event.defaultPrevented || !event.target.getAttribute("hx-sync")?.startsWith("#tray-container:")) return;
@@ -134,6 +135,25 @@
         if (panel?.dataset.tagMode === scroll.mode) tagScrollPanel(panel).scrollTop = scroll.top;
     });
 
+    // The server reads indexed fields, not DOM order. Renumber only field names;
+    // keep tag IDs, input nodes/values and associated label IDs unchanged.
+    function updateTagEditorRows() {
+        const rows = [...document.querySelectorAll("#tag-editor-list > .tag-editor-row")];
+        rows.forEach((row, index) => {
+            row.querySelectorAll("input[name]").forEach(input => {
+                input.name = input.name.replace(/^tag\[\d+\]/, `tag[${index}]`);
+            });
+            const up = row.querySelector('[data-tag-move="up"]');
+            const down = row.querySelector('[data-tag-move="down"]');
+            up.disabled = down.disabled = !!trayRequest;
+            // Keep boundary buttons focusable so repeated keyboard activation
+            // stops at the end instead of switching to the opposite direction.
+            up.setAttribute("aria-disabled", String(!!trayRequest || index === 0));
+            down.setAttribute("aria-disabled", String(!!trayRequest || index === rows.length - 1));
+        });
+    }
+    document.addEventListener("DOMContentLoaded", updateTagEditorRows);
+
     document.addEventListener("click", event => {
         const toggle = event.target.closest("#tag-filter-disclosure");
         const collapse = event.target.closest("#tag-filter-collapse");
@@ -148,8 +168,36 @@
             }
             return;
         }
+        const move = event.target.closest(".tag-editor-move");
+        if (move) {
+            if (move.disabled || trayRequest || move.getAttribute("aria-disabled") === "true") return;
+            const row = move.closest(".tag-editor-row");
+            const up = move.dataset.tagMove === "up";
+            const neighbor = up ? row.previousElementSibling : row.nextElementSibling;
+            if (!neighbor) return;
+            const hadFocus = document.activeElement === move;
+            if (up) row.parentNode.insertBefore(row, neighbor);
+            else row.parentNode.insertBefore(neighbor, row);
+            updateTagEditorRows();
+            if (hadFocus) move.focus({ preventScroll: true });
+            // Scroll only this panel; its sticky toolbar must not cover the row.
+            const panel = row.closest("#tag-container");
+            const bounds = panel.getBoundingClientRect();
+            const rowBounds = row.getBoundingClientRect();
+            const top = Math.max(bounds.top + panel.clientTop,
+                panel.querySelector(".tag-editor-toolbar").getBoundingClientRect().bottom);
+            const bottom = bounds.top + panel.clientTop + panel.clientHeight;
+            // A keyboard can leave too little room for a whole two-line row.
+            const visible = rowBounds.height > bottom - top ? move.getBoundingClientRect() : rowBounds;
+            if (visible.top < top) panel.scrollTop += visible.top - top;
+            else if (visible.bottom > bottom) panel.scrollTop += visible.bottom - bottom;
+            return;
+        }
         const remove = event.target.closest(".tag-editor-remove");
-        if (remove && !remove.disabled) remove.closest(".tag-editor-row").remove();
+        if (remove && !remove.disabled && !trayRequest) {
+            remove.closest(".tag-editor-row").remove();
+            updateTagEditorRows();
+        }
     });
 
     // Failed Undo stays local to its Removed row; transient failures can retry.

@@ -124,6 +124,12 @@
             <input type="color" id="tag-color-{{ .Nr }}" name="tag[{{ .Nr }}]color"
                 value="{{ if .Color }}{{ .Color }}{{ else }}#777777{{ end }}" aria-label="Colour for {{ .DisplayName }}">
         </label>
-        <button class="tag-editor-remove" type="button" aria-label="Remove {{ .DisplayName }}" title="Remove tag">×</button>
+        <div class="tag-editor-row-actions">
+            <button class="tag-editor-move" type="button" data-tag-move="up"
+                aria-label="Move {{ .DisplayName }} up" title="Move tag up"><span aria-hidden="true">↑</span></button>
+            <button class="tag-editor-move" type="button" data-tag-move="down"
+                aria-label="Move {{ .DisplayName }} down" title="Move tag down"><span aria-hidden="true">↓</span></button>
+            <button class="tag-editor-remove" type="button" aria-label="Remove {{ .DisplayName }}" title="Remove tag">×</button>
+        </div>
     </li>
 {{ end }}

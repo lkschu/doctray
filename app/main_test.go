@@ -1059,6 +1059,74 @@ func TestTagsFromMultiform(t *testing.T) {
 	}
 }
 
+func TestTagDraftReorderingPreservesIdentity(t *testing.T) {
+	saved := []tag{
+		{ID: "reading", Nr: "0", Name: "Reading", Enabled: true},
+		{ID: "work", Nr: "1", Name: "Work"},
+		{ID: "removed", Nr: "2", Name: "Removed", Enabled: true},
+	}
+	// The browser reindexes field names after a move/removal; IDs stay attached
+	// to their edited row. An added draft must round-trip in that same order.
+	form := &multipart.Form{Value: map[string][]string{
+		"tag[0]tag_id": {"work"}, "tag[0]name": {"Edited work"}, "tag[0]symbol": {"💻"}, "tag[0]color": {"#112233"},
+		"tag[1]tag_id": {"reading"}, "tag[1]name": {"Reading & <notes>"}, "tag[1]symbol": {"📚"}, "tag[1]color": {"#335599"},
+		"tag[2]tag_id": {"new"}, "tag[2]name": {"New tag"}, "tag[2]color": {"#ffffff"},
+	}}
+	want := []tag{
+		{ID: "work", Nr: "0", Name: "Edited work", Sym: "💻", Color: "#112233"},
+		{ID: "reading", Nr: "1", Name: "Reading & <notes>", Sym: "📚", Color: "#335599", Enabled: true},
+		{ID: "new", Nr: "2", Name: "New tag", Color: "#ffffff"},
+	}
+	draft := tagsFromMultiform(form, saved)
+	if !reflect.DeepEqual(draft, want) {
+		t.Fatal("reordering must keep unsaved field values and filter selections with stable tag IDs")
+	}
+	if saved[0].ID != "reading" || saved[0].Name != "Reading" || saved[0].Nr != "0" || saved[1].ID != "work" || !saved[2].Enabled {
+		t.Error("draft moves must leave the saved order and values intact for Cancel")
+	}
+	tmpl, err := template.ParseFiles("templates/base/tags.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rendered bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&rendered, "base/tags.tmpl", profile_data{Tag_edit: true, Tags: draft}); err != nil {
+		t.Fatal(err)
+	}
+	roundTrip := &multipart.Form{Value: make(map[string][]string)}
+	var visit func(*htmlparser.Node)
+	visit = func(node *htmlparser.Node) {
+		if node.Type == htmlparser.ElementNode && node.Data == "input" {
+			roundTrip.Value[attribute(node, "name")] = []string{attribute(node, "value")}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			visit(child)
+		}
+	}
+	visit(parseTestHTML(t, rendered.String()))
+	if got := tagsFromMultiform(roundTrip, saved); !reflect.DeepEqual(got, want) {
+		t.Error("an Add tag fragment round-trip must preserve reordered edited rows")
+	}
+	previousDirectory := DATA_BASE_PATH
+	DATA_BASE_PATH = t.TempDir()
+	t.Cleanup(func() { DATA_BASE_PATH = previousDirectory })
+	if err := os.MkdirAll(filepath.Join(DATA_BASE_PATH, "data"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	set_data(profile_data{Tags: draft, Posts: []post{{DocID: 1, Title: "Existing", Tags: []string{"reading"}}}}, "tag-editor")
+	profile := get_data("tag-editor")
+	if !reflect.DeepEqual(profile.Tags, want) || len(profile.Posts) != 1 || !reflect.DeepEqual(profile.Posts[0].Tags, []string{"reading"}) {
+		t.Fatal("Save must persist the new tag order without changing message assignments")
+	}
+	if len(profile.Posts[0].Tags_enabled) != len(want) {
+		t.Fatal("message tag bars must include every reordered tag")
+	}
+	for index, segment := range profile.Posts[0].Tags_enabled {
+		if segment.Tag.ID != want[index].ID || segment.Enabled != (want[index].ID == "reading") {
+			t.Error("message tag bars must follow the saved order while assignment remains ID-based")
+		}
+	}
+}
+
 func TestTagEditorTemplate(t *testing.T) {
 	tmpl, err := template.ParseFiles("templates/base/tags.tmpl")
 	if err != nil {
@@ -1076,7 +1144,7 @@ func TestTagEditorTemplate(t *testing.T) {
 		document := parseTestHTML(t, rendered.String())
 		elements := make(map[string]*htmlparser.Node)
 		form := &multipart.Form{Value: make(map[string][]string)}
-		rows, removeButtons, fieldLabels := 0, 0, 0
+		rows, removeButtons, moveUpButtons, moveDownButtons, fieldLabels := 0, 0, 0, 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
 			if node.Type == htmlparser.ElementNode {
@@ -1108,6 +1176,20 @@ func TestTagEditorTemplate(t *testing.T) {
 					removeButtons++
 					if attribute(node, "type") != "button" || attribute(node, "hx-post") != "" || attribute(node, "aria-label") == "" {
 						t.Error("Remove must be a labelled local action, not a request or form submission")
+					}
+				}
+				if attribute(node, "class") == "tag-editor-move" {
+					direction := attribute(node, "data-tag-move")
+					switch direction {
+					case "up":
+						moveUpButtons++
+					case "down":
+						moveDownButtons++
+					default:
+						t.Error("reorder controls must identify an up/down direction")
+					}
+					if node.Data != "button" || attribute(node, "type") != "button" || attribute(node, "hx-post") != "" || attribute(node, "aria-label") == "" || attribute(node, "title") == "" || attribute(node.Parent, "class") != "tag-editor-row-actions" {
+						t.Error("Move must be a labelled local button beside the row's removal action")
 					}
 				}
 			}
@@ -1143,8 +1225,8 @@ func TestTagEditorTemplate(t *testing.T) {
 		if attribute(elements["tag-cancel-button"], "hx-params") != "none" {
 			t.Error("Cancel must not send unapplied editor fields")
 		}
-		if rows != len(draft) || removeButtons != len(draft) || fieldLabels != 3*len(draft) {
-			t.Error("each tag must have one row, three field labels and one removal control")
+		if rows != len(draft) || removeButtons != len(draft) || moveUpButtons != len(draft) || moveDownButtons != len(draft) || fieldLabels != 3*len(draft) {
+			t.Error("each tag must have one row, three field labels, up/down buttons and one removal control")
 		}
 		if parsed := tagsFromMultiform(form, tags); len(draft) > 0 && !reflect.DeepEqual(parsed, draft) {
 			t.Error("editor round-trips must preserve names, emoji, IDs and filter selections without repeated escaping")

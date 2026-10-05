@@ -38,10 +38,18 @@ func TestPWAInstallationAssets(t *testing.T) {
 		ThemeColor      string `json:"theme_color"`
 		BackgroundColor string `json:"background_color"`
 		ShareTarget     struct {
-			Action  string            `json:"action"`
-			Method  string            `json:"method"`
-			Enctype string            `json:"enctype"`
-			Params  map[string]string `json:"params"`
+			Action  string `json:"action"`
+			Method  string `json:"method"`
+			Enctype string `json:"enctype"`
+			Params  struct {
+				Title string `json:"title"`
+				Text  string `json:"text"`
+				URL   string `json:"url"`
+				Files []struct {
+					Name   string   `json:"name"`
+					Accept []string `json:"accept"`
+				} `json:"files"`
+			} `json:"params"`
 		} `json:"share_target"`
 		Icons           []struct {
 			Src     string `json:"src"`
@@ -57,8 +65,11 @@ func TestPWAInstallationAssets(t *testing.T) {
 		t.Error("installation must retain stable identity, launch at the tray and cover the local login/navigation routes")
 	}
 	share := manifest.ShareTarget
-	if share.Action != "/tray/share" || share.Method != "POST" || share.Enctype != "multipart/form-data" || len(share.Params) != 3 || share.Params["title"] != "title" || share.Params["text"] != "text" || share.Params["url"] != "url" {
-		t.Error("Android must send text/link shares to the implemented multipart receiver, without advertising files yet")
+	if share.Action != "/tray/share" || share.Method != "POST" || share.Enctype != "multipart/form-data" || share.Params.Title != "title" || share.Params.Text != "text" || share.Params.URL != "url" {
+		t.Error("Android must send text/link shares to the implemented multipart receiver")
+	}
+	if len(share.Params.Files) != 1 || share.Params.Files[0].Name != "files" || len(share.Params.Files[0].Accept) != 1 || share.Params.Files[0].Accept[0] != "*/*" {
+		t.Error("Android file shares must use the files field and accept images and other file types")
 	}
 	if len(manifest.Icons) != 2 {
 		t.Fatal("installation needs both 192px and 512px PNG icons")

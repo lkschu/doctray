@@ -1243,7 +1243,7 @@ func main() {
 	router.GET("/login", auth_handler.Login()) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
 	router.GET("/callback", auth_handler.Callback_handler())
 	router.GET("/logout", auth_handler.LogoutWithRedirect("/"))
-	registerTextSharing(router, auth_handler.GetUserID, previewJobs)
+	registerSharing(router, auth_handler.GetUserID, previewJobs)
 
 	// Allow access to / for unauthenticated users, but authenticated users will be greated by name.
 	router.GET("/", func(c *gin.Context) {

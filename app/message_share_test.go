@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"mime/multipart"
@@ -20,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func textSharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJobQueue, *bytes.Buffer) {
+func sharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJobQueue, *bytes.Buffer) {
 	t.Helper()
 	previousDirectory := DATA_BASE_PATH
 	DATA_BASE_PATH = t.TempDir()
@@ -31,6 +32,7 @@ func textSharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJo
 		}
 	}
 	router := webAssetsTestRouter(t)
+	router.MaxMultipartMemory = 10 << 20
 	tmpl, err := template.ParseGlob("templates/*/*.tmpl")
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +42,7 @@ func textSharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJo
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	router.Use(requestlog.Middleware(logger))
 	queue := &previewJobQueue{jobs: make(chan previewJob, previewJobQueueSize), activeJobs: make(map[string]bool), logger: logger}
-	registerTextSharing(router, func(c *gin.Context) (string, error) {
+	registerSharing(router, func(c *gin.Context) (string, error) {
 		if !loggedIn {
 			return "", errors.New("session expired")
 		}
@@ -51,6 +53,20 @@ func textSharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJo
 
 func multipartShareRequest(t *testing.T, fields map[string]string, file []byte) *http.Request {
 	t.Helper()
+	if file == nil {
+		return multipartFileShareRequest(t, fields)
+	}
+	return multipartFileShareRequest(t, fields, shareTestFile{name: "photo.png", data: file})
+}
+
+type shareTestFile struct {
+	name  string
+	data  []byte
+	field string
+}
+
+func multipartFileShareRequest(t *testing.T, fields map[string]string, files ...shareTestFile) *http.Request {
+	t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for name, value := range fields {
@@ -58,12 +74,16 @@ func multipartShareRequest(t *testing.T, fields map[string]string, file []byte) 
 			t.Fatal(err)
 		}
 	}
-	if file != nil {
-		part, err := form.CreateFormFile("files", "photo.png")
+	for _, file := range files {
+		field := file.field
+		if field == "" {
+			field = "files"
+		}
+		part, err := form.CreateFormFile(field, file.name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := part.Write(file); err != nil {
+		if _, err := part.Write(file.data); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -98,7 +118,7 @@ func TestSharedMessageText(t *testing.T) {
 }
 
 func TestTextShareSave(t *testing.T) {
-	router, queue, logs := textSharingTestRouter(t, true)
+	router, queue, logs := sharingTestRouter(t, true)
 	deletedAt := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	profile := profile_data{Only_favorites: true, Posts: []post{{DocID: 7, Title: "Keep Undo", DeletedAt: &deletedAt}}}
 	set_data(profile, "sender")
@@ -157,15 +177,15 @@ func TestTextShareRejections(t *testing.T) {
 		status     int
 	}{
 		{name: "expired login", fields: map[string]string{"text": "Private rejected text"}, status: http.StatusUnauthorized},
+		{name: "expired login with file", fields: map[string]string{"text": "Private rejected text"}, file: []byte("private file bytes"), status: http.StatusUnauthorized},
 		{name: "empty", loggedIn: true, fields: map[string]string{"text": " \r\n "}, status: http.StatusBadRequest},
 		{name: "unknown fields", loggedIn: true, fields: map[string]string{"subject": "not a message"}, status: http.StatusBadRequest},
 		{name: "malformed multipart", loggedIn: true, malformed: true, status: http.StatusBadRequest},
-		{name: "oversized", loggedIn: true, fields: map[string]string{"text": strings.Repeat("x", maxSharedTextRequestBytes+1)}, status: http.StatusRequestEntityTooLarge},
-		{name: "files not advertised yet", loggedIn: true, fields: map[string]string{"text": "Caption"}, file: []byte("image bytes"), status: http.StatusBadRequest},
+		{name: "oversized", loggedIn: true, fields: map[string]string{"text": strings.Repeat("x", maxSharedTextBytes+1)}, status: http.StatusRequestEntityTooLarge},
 		{name: "failed persistence", loggedIn: true, fields: map[string]string{"text": "Private rejected text"}, blockWrite: true, status: http.StatusInternalServerError},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			router, queue, logs := textSharingTestRouter(t, test.loggedIn)
+			router, queue, logs := sharingTestRouter(t, test.loggedIn)
 			set_data(profile_data{Posts: []post{{DocID: 3, Title: "Existing message"}}}, "sender")
 			filename := filepath.Join(DATA_BASE_PATH, "data", "sender.json")
 			before, err := os.ReadFile(filename)
@@ -201,7 +221,7 @@ func TestTextShareRejections(t *testing.T) {
 }
 
 func TestSharedCreationPreservesComposerAttachments(t *testing.T) {
-	router, queue, _ := textSharingTestRouter(t, true)
+	router, queue, _ := sharingTestRouter(t, true)
 	set_data(profile_data{Posts: []post{{DocID: 1, Title: "Existing message"}}}, "sender")
 	image, err := os.ReadFile("resources/tray_192.png")
 	if err != nil {
@@ -278,12 +298,159 @@ func (unreadShareBody) Read([]byte) (int, error) { panic("expired share body was
 func (unreadShareBody) Close() error           { return nil }
 
 func TestExpiredShareDoesNotReadBody(t *testing.T) {
-	router, _, _ := textSharingTestRouter(t, false)
+	router, _, _ := sharingTestRouter(t, false)
 	request := httptest.NewRequest(http.MethodPost, "/tray/share", nil)
 	request.Body = unreadShareBody{}
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Error("expired session must fail before parsing or retaining shared data")
+	}
+}
+
+func TestFileShareSave(t *testing.T) {
+	image, err := os.ReadFile("resources/tray_192.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name       string
+		fields     map[string]string
+		files      []shareTestFile
+		title      string
+		thumbnails int
+		previews   int
+	}{
+		{name: "image only", files: []shareTestFile{{name: "private-photo.png", data: image}}, thumbnails: 1},
+		{name: "multiple images with text", fields: map[string]string{"text": "Private caption & <notes> https://example.com/", "subject": "other"},
+			files: []shareTestFile{{name: "private-first.png", data: image}, {name: "private-second.png", data: image}},
+			title: "Private caption &amp; &lt;notes&gt; https://example.com/", thumbnails: 2, previews: 1},
+		{name: "PDF icon fallback", files: []shareTestFile{{name: "private-paper.pdf", data: []byte("%PDF-1.4\nfixture bytes")}}},
+		{name: "unsupported format", files: []shareTestFile{{name: "private-data.unknown", data: []byte("private binary contents")}}},
+		{name: "failed thumbnail", files: []shareTestFile{{name: "private-broken.png", data: []byte("\x89PNG\r\n\x1a\n")}}},
+		{name: "empty file", files: []shareTestFile{{name: "private-empty.txt"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			router, queue, logs := sharingTestRouter(t, true)
+			set_data(profile_data{Posts: []post{{DocID: 1, Title: "Existing message"}}}, "sender")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, multipartFileShareRequest(t, test.fields, test.files...))
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/tray/" || response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("file share must save and redirect once: status %d", response.Code)
+			}
+			saved := get_data("sender")
+			if len(saved.Posts) != 2 || saved.Posts[0].Title != "Existing message" {
+				t.Fatal("file sharing must append one message without replacing existing messages")
+			}
+			message := saved.Posts[1]
+			if message.DocID != 2 || message.Type != doctype_file || string(message.Title) != test.title || len(message.Files) != len(test.files) || message.Starred || len(message.Tags) != 0 || len(message.Webpreview) != test.previews || len(queue.jobs) != test.previews {
+				t.Fatal("files and optional text must use normal message metadata and preview behavior")
+			}
+			rendered := httptest.NewRecorder()
+			if err := router.HTMLRender.Instance("base/doc-entry.tmpl", render_post(message)).Render(rendered); err != nil {
+				t.Fatal(err)
+			}
+			thumbnailCount := 0
+			for index, file := range message.Files {
+				original, err := os.ReadFile(filepath.Join(DATA_BASE_PATH, "uploads", "sender", file.Name))
+				if err != nil || !bytes.Equal(original, test.files[index].data) || file.OrgName != test.files[index].name || file.Icon == "" {
+					t.Error("shared files must retain original bytes/names and an icon in the current user's upload directory")
+				}
+				if file.ThumbnailURL != "" {
+					thumbnailCount++
+					if _, err := os.Stat(filepath.Join(DATA_BASE_PATH, "uploads", "sender", file.Name)+".thumb.png"); err != nil || !strings.Contains(rendered.Body.String(), `src="`+file.ThumbnailURL+`"`) {
+						t.Error("image previews must use an existing generated thumbnail")
+					}
+				}
+				if strings.Contains(rendered.Body.String(), `src="`+file.Url+`"`) || strings.Contains(logs.String(), file.OrgName) {
+					t.Error("file previews/logs must not load originals or expose private filenames")
+				}
+			}
+			if thumbnailCount != test.thumbnails {
+				t.Errorf("generated thumbnails = %d, want %d", thumbnailCount, test.thumbnails)
+			}
+			if strings.Contains(logs.String(), "Private caption") || strings.Contains(logs.String(), "private binary contents") || strings.Contains(logs.String(), "https://example.com/") || strings.Contains(logs.String(), "sender") {
+				t.Error("DEBUG logs must not contain private captions, file bytes, URLs or subjects")
+			}
+			if _, err := os.Stat(filepath.Join(DATA_BASE_PATH, "uploads", "other")); !os.IsNotExist(err) {
+				t.Error("a submitted subject field must never choose the upload account")
+			}
+		})
+	}
+}
+
+func TestFileShareLimitsAndFailures(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		fields        map[string]string
+		sizes         []int
+		fileField     string
+		unknownLength bool
+		blockWrite    bool
+		status        int
+	}{
+		{name: "exact single-file limit", sizes: []int{maxSharedAttachmentBytes}, status: http.StatusSeeOther},
+		{name: "exact combined-file limit", sizes: []int{maxSharedAttachmentBytes / 2, maxSharedAttachmentBytes / 2}, status: http.StatusSeeOther},
+		{name: "single-file too large", sizes: []int{maxSharedAttachmentBytes + 1}, status: http.StatusRequestEntityTooLarge},
+		{name: "combined files too large", sizes: []int{maxSharedAttachmentBytes / 2, maxSharedAttachmentBytes/2 + 1}, status: http.StatusRequestEntityTooLarge},
+		{name: "whole request too large without content length", sizes: []int{maxShareRequestBytes + 1}, unknownLength: true, status: http.StatusRequestEntityTooLarge},
+		{name: "exact text limit", fields: map[string]string{"text": strings.Repeat("x", maxSharedTextBytes)}, status: http.StatusSeeOther},
+		{name: "combined text too large", fields: map[string]string{"title": strings.Repeat("x", maxSharedTextBytes/2), "text": strings.Repeat("x", maxSharedTextBytes/2+1)}, status: http.StatusRequestEntityTooLarge},
+		{name: "unexpected file field", sizes: []int{16}, fileField: "unexpected", status: http.StatusBadRequest},
+		{name: "failed file persistence", sizes: []int{16, 16}, fields: map[string]string{"text": "https://example.com/"}, blockWrite: true, status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			router, queue, logs := sharingTestRouter(t, true)
+			// Force multipart disk staging and check cleanup on success and rejection.
+			router.MaxMultipartMemory = 1 << 10
+			temporaryUploads := t.TempDir()
+			t.Setenv("TMPDIR", temporaryUploads)
+			set_data(profile_data{Posts: []post{{DocID: 1, Title: "Existing message"}}}, "sender")
+			filename := filepath.Join(DATA_BASE_PATH, "data", "sender.json")
+			before, err := os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.blockWrite {
+				if err := os.Mkdir(filename+".tmp", 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			files := []shareTestFile{}
+			for index, size := range test.sizes {
+				files = append(files, shareTestFile{name: fmt.Sprintf("private-file-%d.bin", index), data: bytes.Repeat([]byte{'x'}, size), field: test.fileField})
+			}
+			request := multipartFileShareRequest(t, test.fields, files...)
+			if test.unknownLength {
+				request.ContentLength = -1
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != test.status || response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("share status = %d, want %d with no-store", response.Code, test.status)
+			}
+			uploads, err := os.ReadDir(filepath.Join(DATA_BASE_PATH, "uploads", "sender"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.status == http.StatusSeeOther {
+				if len(get_data("sender").Posts) != 2 || len(uploads) != len(files) || response.Header().Get("Location") != "/tray/" {
+					t.Error("boundary-sized shares must save one message and all originals before redirecting")
+				}
+			} else {
+				if after, err := os.ReadFile(filename); err != nil || !bytes.Equal(before, after) || len(uploads) != 0 || len(queue.jobs) != 0 {
+					t.Error("rejected/failed file shares must leave the profile intact, roll back uploads and queue no previews")
+				}
+				if response.Header().Get("Location") != "" || !strings.Contains(response.Body.String(), "Share not saved") {
+					t.Error("failed shares must not report success or redirect")
+				}
+			}
+			if entries, err := os.ReadDir(temporaryUploads); err != nil || len(entries) != 0 {
+				t.Error("multipart temporary uploads must be removed, including oversized requests")
+			}
+			if strings.Contains(logs.String(), "private-file-") || strings.Contains(logs.String(), "sender.json") || strings.Contains(logs.String(), "https://example.com/") {
+				t.Error("file-share failures/logs must not reveal private filenames, subjects or URLs")
+			}
+		})
 	}
 }

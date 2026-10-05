@@ -2,13 +2,19 @@ package main
 
 import (
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
-const maxSharedTextRequestBytes = 256 << 10
+const (
+	maxSharedTextBytes       = 256 << 10
+	maxSharedAttachmentBytes = 10 << 20
+	// Bound the entire request, allowing space for text and multipart headers.
+	maxShareRequestBytes = maxSharedAttachmentBytes + maxSharedTextBytes + (64 << 10)
+)
 
 // Android often puts a shared URL in text, not url. Keep all distinct non-empty
 // fields in order; only identical whole fields are omitted, never substrings.
@@ -34,35 +40,56 @@ func shareError(c *gin.Context, status int, message string, loginRequired bool) 
 
 // Use the existing OIDC session checker, but fail rather than redirect an expired
 // POST into login: shared content is not retained or replayed after authentication.
-func registerTextSharing(router *gin.Engine, userID func(*gin.Context) (string, error), previews *previewJobQueue) {
+func registerSharing(router *gin.Engine, userID func(*gin.Context) (string, error), previews *previewJobQueue) {
 	router.POST("/tray/share", func(c *gin.Context) {
 		subject, err := userID(c)
 		if err != nil || subject == "" {
 			shareError(c, http.StatusUnauthorized, "You need to log in before sharing to DocTray. Nothing was saved.", true)
 			return
 		}
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSharedTextRequestBytes)
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxShareRequestBytes)
 		form, err := c.MultipartForm()
 		if err != nil {
 			var tooLarge *http.MaxBytesError
-			if errors.As(err, &tooLarge) {
-				shareError(c, http.StatusRequestEntityTooLarge, "The share is too large. Text shares must fit within 256 KiB, including form data.", false)
+			if errors.As(err, &tooLarge) || errors.Is(err, multipart.ErrMessageTooLarge) {
+				shareError(c, http.StatusRequestEntityTooLarge, "The share is too large or contains too many parts. Try a smaller selection. Nothing was saved.", false)
 			} else {
 				shareError(c, http.StatusBadRequest, "DocTray could not read this share. Go back and share it again.", false)
 			}
 			return
 		}
 		defer form.RemoveAll()
-		if len(form.File) != 0 {
-			shareError(c, http.StatusBadRequest, "File sharing is not available yet. Nothing was saved.", false)
+		textBytes := 0
+		for _, values := range form.Value {
+			for _, value := range values {
+				textBytes += len(value)
+			}
+		}
+		if textBytes > maxSharedTextBytes {
+			shareError(c, http.StatusRequestEntityTooLarge, "Shared text must total 256 KiB or less. Nothing was saved.", false)
+			return
+		}
+		for name := range form.File {
+			if name != "files" {
+				shareError(c, http.StatusBadRequest, "DocTray received files in an unexpected form field. Nothing was saved.", false)
+				return
+			}
+		}
+		files := form.File["files"]
+		var attachmentBytes int64
+		for _, file := range files {
+			attachmentBytes += file.Size
+		}
+		if attachmentBytes > maxSharedAttachmentBytes {
+			shareError(c, http.StatusRequestEntityTooLarge, "Attachments must total 10 MiB or less. Nothing was saved.", false)
 			return
 		}
 		text := sharedMessageText(form.Value)
-		if text == "" {
-			shareError(c, http.StatusBadRequest, "The share contained no text or link. Nothing was saved.", false)
+		if text == "" && len(files) == 0 {
+			shareError(c, http.StatusBadRequest, "The share contained no text, link or file. Nothing was saved.", false)
 			return
 		}
-		if _, _, err := createMessage(c, subject, text, nil, previews); err != nil {
+		if _, _, err := createMessage(c, subject, text, files, previews); err != nil {
 			shareError(c, http.StatusInternalServerError, "DocTray could not save this share. Go back and try again.", false)
 			return
 		}

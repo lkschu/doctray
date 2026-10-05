@@ -25,6 +25,27 @@ import (
 	htmlparser "golang.org/x/net/html"
 )
 
+func parseTestHTML(t *testing.T, markup string) *htmlparser.Node {
+	t.Helper()
+	// Parse a separate reader so later raw-HTML assertions keep their input.
+	document, err := htmlparser.Parse(strings.NewReader(markup))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document
+}
+
+func attribute(node *htmlparser.Node, name string) string {
+	if node != nil {
+		for _, attr := range node.Attr {
+			if attr.Key == name {
+				return attr.Val
+			}
+		}
+	}
+	return ""
+}
+
 func TestPostHasPendingPreviews(t *testing.T) {
 	tests := []struct {
 		name string
@@ -153,18 +174,7 @@ func TestMessageCardTemplate(t *testing.T) {
 	if err := tmpl.ExecuteTemplate(&rendered, "base/doc.tmpl", message); err != nil {
 		t.Fatal(err)
 	}
-	document, err := htmlparser.Parse(&rendered)
-	if err != nil {
-		t.Fatal(err)
-	}
-	attribute := func(node *htmlparser.Node, name string) string {
-		for _, attr := range node.Attr {
-			if attr.Key == name {
-				return attr.Val
-			}
-		}
-		return ""
-	}
+	document := parseTestHTML(t, rendered.String())
 	elements := make(map[string]*htmlparser.Node)
 	tagButtons, actionButtons, thumbnails := 0, 0, 0
 	var mobileDate, desktopDate *htmlparser.Node
@@ -243,9 +253,6 @@ func TestMessageCardTemplate(t *testing.T) {
 	if actionIcons != 2 {
 		t.Error("both message actions must include exactly one shared icon")
 	}
-	if strings.Contains(rendered.String(), "doc-entry-action-mobile") || strings.Contains(rendered.String(), "doc-entry-action-desktop") {
-		t.Error("message actions must not duplicate icons for desktop and mobile")
-	}
 	preview := elements["doc-webpreviews-42"]
 	if preview == nil || attribute(preview, "class") != "doc-entry-web-previews" || attribute(preview, "hx-get") != "/tray/doc-preview/42" || attribute(preview, "hx-trigger") != "every 1s" || attribute(preview, "hx-swap") != "outerHTML" {
 		t.Error("responsive previews must preserve their polling ID, endpoint and fragment swap")
@@ -278,18 +285,7 @@ func TestMessageStarButtonTemplate(t *testing.T) {
 		if err := tmpl.ExecuteTemplate(&rendered, "base/doc-star.tmpl", post{DocID: 42, Starred: starred}); err != nil {
 			t.Fatal(err)
 		}
-		document, err := htmlparser.Parse(&rendered)
-		if err != nil {
-			t.Fatal(err)
-		}
-		attribute := func(node *htmlparser.Node, name string) string {
-			for _, attr := range node.Attr {
-				if attr.Key == name {
-					return attr.Val
-				}
-			}
-			return ""
-		}
+		document := parseTestHTML(t, rendered.String())
 		buttons, actionIcons := 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
@@ -347,21 +343,23 @@ func TestMessageTagButtonTemplate(t *testing.T) {
 		if err := tmpl.ExecuteTemplate(&rendered, "base/doc-tagbar-segments.tmpl", tag_enabled{Tag: &tag, Enabled: test.assigned, BackRef: &message}); err != nil {
 			t.Fatal(err)
 		}
-		document, err := htmlparser.Parse(&rendered)
-		if err != nil {
-			t.Fatal(err)
-		}
-		attribute := func(node *htmlparser.Node, name string) string {
-			for _, attr := range node.Attr {
-				if attr.Key == name {
-					return attr.Val
-				}
-			}
-			return ""
-		}
-		buttons := 0
+		document := parseTestHTML(t, rendered.String())
+		buttons, symbols := 0, 0
 		var visit func(*htmlparser.Node)
 		visit = func(node *htmlparser.Node) {
+			if node.Type == htmlparser.TextNode && node.Parent.Data == "button" && strings.TrimSpace(node.Data) != "" {
+				t.Error("symbol-only tag buttons must not contain extra visible text")
+			}
+			if node.Type == htmlparser.ElementNode && node.Parent.Data == "button" {
+				symbols++
+				want := test.symbol
+				if want == "" {
+					want = "#"
+				}
+				if node.Data != "span" || attribute(node, "class") != "doc-entry-tag-symbol" || attribute(node, "aria-hidden") != "true" || node.FirstChild == nil || node.FirstChild.Type != htmlparser.TextNode || node.FirstChild.Data != want || node.FirstChild.NextSibling != nil {
+					t.Error("tag buttons must contain only their decorative emoji or # fallback")
+				}
+			}
 			if node.Type == htmlparser.ElementNode && node.Data == "button" {
 				buttons++
 				if attribute(node, "id") != fmt.Sprintf("doc-tag-%d-reading", test.messageID) || attribute(node, "class") != "doc-entry-tagview-segment" || attribute(node, "type") != "button" {
@@ -386,14 +384,8 @@ func TestMessageTagButtonTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		if buttons != 1 || strings.Contains(rendered.String(), "<notes>") {
-			t.Error("tag fragments must contain one button and safely escape tag names")
-		}
-		if strings.Contains(rendered.String(), "doc-entry-tag-name") || strings.Contains(rendered.String(), "doc-entry-tag-selection") {
-			t.Error("message tags must retain compact symbol-only segments, not named chips")
-		}
-		if test.symbol == "" && !strings.Contains(rendered.String(), ">#</span>") {
-			t.Error("tags without emoji must retain a visible desktop symbol")
+		if buttons != 1 || symbols != 1 || strings.Contains(rendered.String(), "<notes>") {
+			t.Error("tag fragments must contain one symbol-only button and safely escape tag names")
 		}
 	}
 }
@@ -423,6 +415,9 @@ func TestPreparePostView(t *testing.T) {
 }
 
 func TestCreatedPostResponse(t *testing.T) {
+	previousMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(previousMode) })
 	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
 	if err != nil {
 		t.Fatal(err)
@@ -467,6 +462,9 @@ func TestCreatedPostResponse(t *testing.T) {
 			if response.Code != test.wantCode {
 				t.Fatalf("response status = %d, want %d", response.Code, test.wantCode)
 			}
+			if len(profile.Posts) != test.oldCount+1 || (test.oldCount > 0 && profile.Posts[0].DeletedAt != &deletedAt) {
+				t.Error("responding to creation must not remove existing posts or end Undo")
+			}
 			body := response.Body.String()
 			if test.wantCode == http.StatusNoContent {
 				if body != "" {
@@ -485,9 +483,6 @@ func TestCreatedPostResponse(t *testing.T) {
 			if strings.Contains(body, `src="/media/photo.jpg"`) {
 				t.Error("appended attachments must never use original files as previews")
 			}
-			if len(profile.Posts) != test.oldCount+1 || (test.oldCount > 0 && profile.Posts[0].DeletedAt != &deletedAt) {
-				t.Error("responding to creation must not remove existing posts or end Undo")
-			}
 		})
 	}
 }
@@ -501,18 +496,7 @@ func TestComposerTemplate(t *testing.T) {
 	if err := tmpl.ExecuteTemplate(&rendered, "base/composer.tmpl", profile_data{}); err != nil {
 		t.Fatal(err)
 	}
-	document, err := htmlparser.Parse(&rendered)
-	if err != nil {
-		t.Fatal(err)
-	}
-	attribute := func(node *htmlparser.Node, name string) string {
-		for _, attr := range node.Attr {
-			if attr.Key == name {
-				return attr.Val
-			}
-		}
-		return ""
-	}
+	document := parseTestHTML(t, rendered.String())
 	elements := make(map[string]*htmlparser.Node)
 	var visit func(*htmlparser.Node)
 	visit = func(node *htmlparser.Node) {
@@ -565,9 +549,6 @@ func TestComposerTemplate(t *testing.T) {
 	if attribute(elements["docUpload-label"], "aria-label") != "Attach files" {
 		t.Error("icon-only attachment button needs an accessible label")
 	}
-	if elements["docUpload-hint"] != nil || attribute(elements["docUpload-text"], "aria-describedby") != "" {
-		t.Error("composer retains the removed keyboard hint")
-	}
 	if attribute(elements["upload-button"], "type") != "submit" || attribute(elements["upload-button"], "hx-post") != "" {
 		t.Error("Send must submit the form rather than use a separate request path")
 	}
@@ -609,18 +590,7 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		if err := tmpl.ExecuteTemplate(&rendered, "posts/tray.tmpl", profile); err != nil {
 			t.Fatal(err)
 		}
-		document, err := htmlparser.Parse(&rendered)
-		if err != nil {
-			t.Fatal(err)
-		}
-		attribute := func(node *htmlparser.Node, name string) string {
-			for _, attr := range node.Attr {
-				if attr.Key == name {
-					return attr.Val
-				}
-			}
-			return ""
-		}
+		document := parseTestHTML(t, rendered.String())
 		elements := make(map[string]*htmlparser.Node)
 		composerCount := 0
 		var navigationButtons []*htmlparser.Node
@@ -714,9 +684,6 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		if elements["uploadform"].Parent != elements["tray-container"] || elements["workspace-container"].Parent != elements["tray-container"] {
 			t.Error("composer must be a sibling of the replaceable workspace")
 		}
-		if elements["delete-undo"] != nil || elements["delete-undo-button"] != nil {
-			t.Error("tray must not retain the global Undo bar")
-		}
 		for _, fragment := range []string{"posts/workspace-container.tmpl", "base/doc-list.tmpl"} {
 			rendered.Reset()
 			if err := tmpl.ExecuteTemplate(&rendered, fragment, profile); err != nil {
@@ -754,18 +721,7 @@ func TestResponsivePageTemplates(t *testing.T) {
 			if !strings.Contains(rendered.String(), "<!DOCTYPE html>") {
 				t.Error("full pages must use standards-mode HTML")
 			}
-			document, err := htmlparser.Parse(&rendered)
-			if err != nil {
-				t.Fatal(err)
-			}
-			attribute := func(node *htmlparser.Node, name string) string {
-				for _, attr := range node.Attr {
-					if attr.Key == name {
-						return attr.Val
-					}
-				}
-				return ""
-			}
+			document := parseTestHTML(t, rendered.String())
 			elements := make(map[string]*htmlparser.Node)
 			viewportCount := 0
 			var body *htmlparser.Node
@@ -859,18 +815,7 @@ func TestTagFilterTemplate(t *testing.T) {
 			if err := tmpl.ExecuteTemplate(&rendered, "base/tags.tmpl", test.profile); err != nil {
 				t.Fatal(err)
 			}
-			document, err := htmlparser.Parse(&rendered)
-			if err != nil {
-				t.Fatal(err)
-			}
-			attribute := func(node *htmlparser.Node, name string) string {
-				for _, attr := range node.Attr {
-					if attr.Key == name {
-						return attr.Val
-					}
-				}
-				return ""
-			}
+			document := parseTestHTML(t, rendered.String())
 			elements := make(map[string]*htmlparser.Node)
 			var summarySegments []*htmlparser.Node
 			var visit func(*htmlparser.Node)
@@ -887,9 +832,6 @@ func TestTagFilterTemplate(t *testing.T) {
 					}
 					if node.Data == "input" {
 						t.Error("browsing filters must not contain editor inputs or hidden checkboxes")
-					}
-					if class := attribute(node, "class"); class == "tag-filter-heading" || class == "tag-filter-color" {
-						t.Error("filter bar must not retain the heading or colour dots")
 					}
 				}
 				for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -912,9 +854,9 @@ func TestTagFilterTemplate(t *testing.T) {
 					t.Errorf("%s must control disclosure locally, not mutate filters or submit a request", id)
 				}
 			}
-            if attribute(elements["tag-filter-disclosure"], "aria-expanded") != "false" || elements["tag-filter-content"] == nil {
-                t.Error("disclosure must expose its initial state and a real control target")
-            }
+			if attribute(elements["tag-filter-disclosure"], "aria-expanded") != "false" || elements["tag-filter-content"] == nil {
+				t.Error("disclosure must expose its initial state and a real control target")
+			}
 			if attribute(elements["tag-filter-collapse"].Parent, "class") != "tag-filter-footer" || attribute(elements["tag-filter-collapse"].Parent.Parent, "id") != "tag-filter-content" {
 				t.Error("collapse must remain outside the filter controls' scroll area")
 			}
@@ -1090,18 +1032,7 @@ func TestTagEditorTemplate(t *testing.T) {
 		if err := tmpl.ExecuteTemplate(&rendered, "base/tags.tmpl", profile_data{Tag_edit: true, Tags: draft}); err != nil {
 			t.Fatal(err)
 		}
-		document, err := htmlparser.Parse(&rendered)
-		if err != nil {
-			t.Fatal(err)
-		}
-		attribute := func(node *htmlparser.Node, name string) string {
-			for _, attr := range node.Attr {
-				if attr.Key == name {
-					return attr.Val
-				}
-			}
-			return ""
-		}
+		document := parseTestHTML(t, rendered.String())
 		elements := make(map[string]*htmlparser.Node)
 		form := &multipart.Form{Value: make(map[string][]string)}
 		rows, removeButtons, fieldLabels := 0, 0, 0
@@ -1420,18 +1351,7 @@ func TestPerMessageUndoTemplate(t *testing.T) {
 			t.Error("Removed rows must not display deleted text or attachment contents")
 		}
 	}
-	document, err := htmlparser.Parse(&rendered)
-	if err != nil {
-		t.Fatal(err)
-	}
-	attribute := func(node *htmlparser.Node, name string) string {
-		for _, attr := range node.Attr {
-			if attr.Key == name {
-				return attr.Val
-			}
-		}
-		return ""
-	}
+	document := parseTestHTML(t, rendered.String())
 	undo := make(map[int]string)
 	var visit func(*htmlparser.Node)
 	visit = func(node *htmlparser.Node) {

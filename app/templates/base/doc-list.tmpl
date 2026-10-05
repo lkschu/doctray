@@ -90,7 +90,7 @@
                 </li>
             </div> -->
 
-            <ul class="main-list">
+            <ul class="main-list" id="doc-list">
             {{ range $doc := .Posts }}
                 {{ template "base/doc.tmpl" $doc }}
             {{ end }}

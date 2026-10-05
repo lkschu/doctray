@@ -357,12 +357,14 @@
             form.querySelectorAll("button, textarea, input").forEach(control => { control.disabled = false; });
             progress.hidden = true;
             if (event.detail.successful) {
-                // Only the message list is swapped; explicitly clear the sent draft.
+                // The card is appended (or hidden by filters); clear only the sent draft.
                 form.reset();
                 files = [];
                 updateAttachments();
                 resizeTextarea(textarea);
                 showError("");
+                // A filtered-out save has no swap/afterSettle event.
+                if (event.detail.xhr.status === 204) focusComposer();
             } else {
                 showError("Could not send the message. Your draft is still here; try again.");
                 if (form.isConnected) focusComposer();

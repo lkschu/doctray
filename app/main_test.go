@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +21,7 @@ import (
 	"doctray/internal/previewbuilder"
 	"doctray/internal/thumbnail"
 
+	"github.com/gin-gonic/gin"
 	htmlparser "golang.org/x/net/html"
 )
 
@@ -395,6 +398,100 @@ func TestMessageTagButtonTemplate(t *testing.T) {
 	}
 }
 
+func TestPreparePostView(t *testing.T) {
+	tags := []tag{{ID: "reading"}, {ID: "work"}}
+	tagMap := map[string]*tag{"reading": &tags[0], "work": &tags[1]}
+	message := post{DocID: 42, Type: "legacy", Tags: []string{"reading", "unknown", ""},
+		Files: []docentry_file{{OrgName: "notes.pdf"}, {OrgName: "unknown.xyz"}, {OrgName: "custom.pdf", Icon: "custom"}}}
+	preparePostView(&message, tags, tagMap)
+	if message.Type != doctype_mesage || !reflect.DeepEqual(message.Tags, []string{"reading"}) {
+		t.Error("shared view preparation must retain profile-load type/tag defaults")
+	}
+	for i, want := range []string{known_file_suffixes[".pdf"], known_file_suffixes[".default"], "custom"} {
+		if message.Files[i].Icon != want || message.Files[i].ThumbnailURL != "" {
+			t.Error("view preparation must fill missing icons, preserve existing icons and never invent thumbnails")
+		}
+	}
+	if len(message.Tags_enabled) != len(tags) {
+		t.Fatal("view preparation must include all saved tags")
+	}
+	for i, enabled := range message.Tags_enabled {
+		if enabled.Tag.ID != tags[i].ID || enabled.BackRef != &message || enabled.Enabled != (i == 0) {
+			t.Error("tag segments must preserve assignment state and point to the prepared message")
+		}
+	}
+}
+
+func TestCreatedPostResponse(t *testing.T) {
+	tmpl, err := template.ParseFiles("templates/base/doc.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name      string
+		oldCount  int
+		tagFilter bool
+		starred   bool
+		matches   bool
+		wantCode  int
+	}{
+		{name: "empty tray", wantCode: http.StatusOK},
+		{name: "many existing messages", oldCount: 50, wantCode: http.StatusOK},
+		{name: "hidden by tag filter", oldCount: 50, tagFilter: true, wantCode: http.StatusNoContent},
+		{name: "hidden by starred filter", oldCount: 50, starred: true, wantCode: http.StatusNoContent},
+		{name: "matches filters", oldCount: 50, tagFilter: true, starred: true, matches: true, wantCode: http.StatusOK},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profile := profile_data{Tags: []tag{{ID: "reading", Name: "Reading", Sym: "📚", Enabled: test.tagFilter}}, Only_favorites: test.starred}
+			profile.Tag_map = map[string]*tag{"reading": &profile.Tags[0]}
+			for i := 0; i < test.oldCount; i++ {
+				profile.Posts = append(profile.Posts, post{DocID: i, Title: "Existing message"})
+			}
+			deletedAt := time.Now().UTC()
+			if test.oldCount > 0 {
+				profile.Posts[0].DeletedAt = &deletedAt
+			}
+			created := post{DocID: 99, Title: "New message", Type: doctype_file, Date: "Tue, 03 Oct 2000 14:05:59 GMT",
+				Files: []docentry_file{{OrgName: "notes.pdf", Url: "/media/notes.pdf"}, {OrgName: "photo.jpg", Url: "/media/photo.jpg", ThumbnailURL: "/media/photo.jpg.thumb.png"}},
+				Webpreview: []previewbuilder.URLPreview{{ID: "pending", Pending: true, URL: "https://example.com/", Title: "Pending preview"}}}
+			if test.matches {
+				created.Tags = []string{"reading"}
+				created.Starred = true
+			}
+			profile.Posts = append(profile.Posts, created) // Already persisted by the caller.
+			router := gin.New()
+			router.SetHTMLTemplate(tmpl)
+			router.POST("/tray/doc-create", func(c *gin.Context) { renderCreatedPost(c, profile, created) })
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/tray/doc-create", nil))
+			if response.Code != test.wantCode {
+				t.Fatalf("response status = %d, want %d", response.Code, test.wantCode)
+			}
+			body := response.Body.String()
+			if test.wantCode == http.StatusNoContent {
+				if body != "" {
+					t.Error("filtered-out creations must succeed without a fragment or list replacement")
+				}
+				return
+			}
+			if strings.Count(body, `class="doc-entry-container"`) != 1 || !strings.Contains(body, `id="doc-entry-container-99"`) || strings.Contains(body, "Existing message") || strings.Contains(body, "Removed") || strings.Contains(body, `id="doc-container"`) || strings.Contains(body, `id="doc-list"`) {
+				t.Error("creation must return only the new card, never existing/Removed rows or list wrappers")
+			}
+			for _, fragment := range []string{`id="doc-tag-99-reading"`, `>picture_as_pdf</span>`, `src="/media/photo.jpg.thumb.png"`, `hx-get="/tray/doc-preview/99"`, `datetime="2000-10-03T14:05:59Z"`} {
+				if !strings.Contains(body, fragment) {
+					t.Errorf("new card missing derived view data or behavior: %s", fragment)
+				}
+			}
+			if strings.Contains(body, `src="/media/photo.jpg"`) {
+				t.Error("appended attachments must never use original files as previews")
+			}
+			if len(profile.Posts) != test.oldCount+1 || (test.oldCount > 0 && profile.Posts[0].DeletedAt != &deletedAt) {
+				t.Error("responding to creation must not remove existing posts or end Undo")
+			}
+		})
+	}
+}
+
 func TestComposerTemplate(t *testing.T) {
 	tmpl, err := template.ParseFiles("templates/base/composer.tmpl")
 	if err != nil {
@@ -440,7 +537,7 @@ func TestComposerTemplate(t *testing.T) {
 		}
 	}
 	form := elements["form"]
-	if attribute(form, "hx-post") != "/tray/doc-create" || attribute(form, "hx-encoding") != "multipart/form-data" || attribute(form, "hx-target") != "#doc-container" {
+	if attribute(form, "hx-post") != "/tray/doc-create" || attribute(form, "hx-encoding") != "multipart/form-data" || attribute(form, "hx-target") != "#doc-list" || attribute(form, "hx-swap") != "beforeend scroll:#doc-container:bottom" {
 		t.Error("composer does not use the single multipart HTMX submission path")
 	}
 	if attribute(form, "hx-sync") != "#tray-container:queue all" {
@@ -575,13 +672,16 @@ func TestTrayLayoutTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "uploadform", "tray-navigation"} {
+		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "doc-list", "uploadform", "tray-navigation"} {
 			if elements[id] == nil {
 				t.Fatalf("tray element %q missing (tag edit: %t)", id, tagEdit)
 			}
 		}
 		if composerCount != 1 {
 			t.Errorf("tray contains %d composers, want one", composerCount)
+		}
+		if elements["doc-list"].Data != "ul" || elements["doc-list"].Parent.Parent != elements["doc-container"] {
+			t.Error("the append target must remain inside the existing message scroll owner")
 		}
 		menu := elements["tray-navigation"]
 		if menu.Data != "nav" || attribute(menu, "popover") != "auto" || attribute(menu, "aria-label") == "" || menu.Parent != elements["page-container"] {

@@ -555,11 +555,16 @@ func render_workspace_container_to_html(c *gin.Context) {
 	})
 }
 
-func render_posts_to_html(c *gin.Context) {
-	sub := get_uuid(c)
-	withProfileLock(sub, func() {
-		c.HTML(http.StatusOK, "base/doc-list.tmpl", renderPosts(get_data(sub), true))
-	})
+// Creation responds only with the saved card, using the same filters as a list load.
+func renderCreatedPost(c *gin.Context, profile profile_data, created post) {
+	profile.Posts = []post{created}
+	preparePostView(&profile.Posts[0], profile.Tags, profile.Tag_map)
+	visible := renderPosts(profile, false).Posts
+	if len(visible) == 0 {
+		c.Status(http.StatusNoContent)
+		return
+	}
+	c.HTML(http.StatusOK, "base/doc.tmpl", visible[0])
 }
 
 // Unlike ordinary profile reads, a full tray load ends Undo. Call under the
@@ -1051,52 +1056,42 @@ func readProfile(sub string) (profile_data, error) {
 		}
 	}
 
-	// Validate posts, set defaults
-	// TODO: remove duplicate ids
-	posts := profile_data.Posts
-	for i, d := range posts {
-		if d.Type != doctype_file && d.Type != doctype_mesage && d.Type != doctype_image {
-			posts[i].Type = doctype_mesage
-		}
-		if len(d.Files) > 0 {
-			for j, f := range d.Files {
-				if f.Icon == "" {
-					icon, success := known_file_suffixes[filepath.Ext(f.OrgName)]
-					if success {
-						posts[i].Files[j].Icon = icon
-					} else {
-						posts[i].Files[j].Icon = known_file_suffixes[".default"]
-					}
-				}
-			}
-		}
+	for i := range profile_data.Posts {
+		preparePostView(&profile_data.Posts[i], profile_data.Tags, profile_data.Tag_map)
 	}
-
-	for i, p := range posts {
-		active_tags := make(map[string]bool)
-		new_tags := make([]string, 0)
-		// drop duplicate and old tags
-		for _, t := range p.Tags {
-			if _, ok := profile_data.Tag_map[t]; ok && t != "" {
-				new_tags = append(new_tags, t)
-			}
-		}
-		posts[i].Tags = new_tags
-
-		for _, t := range p.Tags {
-			active_tags[t] = true
-		}
-		posts[i].Tags_enabled = make([]tag_enabled, 0)
-		for _, t := range profile_data.Tags {
-			tag_enabled := tag_enabled{Enabled: active_tags[t.ID], Tag: &t, BackRef: &posts[i]}
-			posts[i].Tags_enabled = append(posts[i].Tags_enabled, tag_enabled)
-		}
-
-	}
-	profile_data.Posts = posts
 
 	return profile_data, nil
 }
+
+// Reuse profile-load defaults for a new card without rereading the whole profile.
+func preparePostView(p *post, tags []tag, tagMap map[string]*tag) {
+	if p.Type != doctype_file && p.Type != doctype_mesage && p.Type != doctype_image {
+		p.Type = doctype_mesage
+	}
+	for i, file := range p.Files {
+		if file.Icon == "" {
+			icon, ok := known_file_suffixes[filepath.Ext(file.OrgName)]
+			if !ok {
+				icon = known_file_suffixes[".default"]
+			}
+			p.Files[i].Icon = icon
+		}
+	}
+	activeTags := make(map[string]bool)
+	validTags := make([]string, 0)
+	for _, id := range p.Tags {
+		activeTags[id] = true
+		if _, ok := tagMap[id]; ok && id != "" {
+			validTags = append(validTags, id)
+		}
+	}
+	p.Tags = validTags
+	p.Tags_enabled = make([]tag_enabled, 0)
+	for _, tag := range tags {
+		p.Tags_enabled = append(p.Tags_enabled, tag_enabled{Enabled: activeTags[tag.ID], Tag: &tag, BackRef: p})
+	}
+}
+
 func set_data(profile profile_data, sub string) {
 	profile.normalize_tag_nrs()
 	b, err := json.Marshal(profile)
@@ -1451,7 +1446,6 @@ func main() {
 			}
 			if len(files) == 0 && title == "" {
 				c.String(http.StatusBadRequest, "Empty message!\n")
-				render_posts_to_html(c)
 				return
 			}
 
@@ -1521,13 +1515,12 @@ func main() {
 				set_data(profile, sub)
 				persisted = true
 				previewJobs.enqueuePendingPreviews(sub, profile)
+				renderCreatedPost(c, profile, newPost)
 			})
 			if uploadErr != nil {
 				c.String(http.StatusBadRequest, "upload file err: %s", uploadErr.Error())
 				return
 			}
-
-			render_posts_to_html(c)
 		})
 
 		router_tray.POST("/doc-delete", func(c *gin.Context) {

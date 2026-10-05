@@ -215,6 +215,28 @@ func TestMessageEditErrorsAndAttachmentOnlyText(t *testing.T) {
 }
 
 func TestReconcilePostPreviews(t *testing.T) {
+	// A final word-boundary assertion must not trim valid trailing URL slashes.
+	for _, test := range []struct {
+		input string
+		want  string
+	}{
+		{input: "https://example.com/", want: "https://example.com/"},
+		{input: "https://example.com/article/", want: "https://example.com/article/"},
+		{input: "https://example.com/path//", want: "https://example.com/path//"},
+		{input: "https://example.com/article/.", want: "https://example.com/article/"},
+		{input: "https://example.com/article).", want: "https://example.com/article"},
+	} {
+		t.Run(test.input, func(t *testing.T) {
+			text := "Before " + test.input + " after"
+			matches := find_url_in_string([]byte(text))
+			if len(matches) != 1 {
+				t.Fatalf("URL matches = %d, want one", len(matches))
+			}
+			if got := text[matches[0][0]:matches[0][1]]; got != test.want {
+				t.Errorf("extracted URL = %q, want %q", got, test.want)
+			}
+		})
+	}
 	existing := []previewbuilder.URLPreview{
 		{ID: "ready", URL: "https://ready.example/", Title: "Cached"},
 		{ID: "pending", URL: "https://pending.example/", Pending: true},

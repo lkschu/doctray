@@ -449,7 +449,8 @@ var url_regex *regexp.Regexp
 
 func find_url_in_string(l []byte) [][]int {
 	if url_regex == nil {
-		url_regex, _ = regexp.Compile(`\b((https?:\/\/)?((localhost|(\d{1,3}\.){3}\d{1,3}|([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}))(:\d{2,5})?(\/[^\s]*)?)\b`)
+		// A slash is a valid URL ending even though it is not a word character.
+		url_regex, _ = regexp.Compile(`\b((https?:\/\/)?((localhost|(\d{1,3}\.){3}\d{1,3}|([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}))(:\d{2,5})?(\/[^\s]*)?)(?:\/|\b)`)
 	}
 	// return url_regex.FindIndex(l)
 	return url_regex.FindAllIndex(l, -1)

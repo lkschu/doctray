@@ -354,7 +354,8 @@
         min-height: 0;
         max-height: none;
     }
-    #tag-container[data-tag-mode="edit"] ~ #doc-container {
+    #tag-container[data-tag-mode="edit"] ~ #doc-container,
+    #tag-container[data-tag-mode="edit"] ~ #doc-jump-bottom {
         display: none;
     }
     #tag-editor-form {

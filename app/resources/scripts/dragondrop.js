@@ -523,6 +523,48 @@
 
     document.addEventListener("DOMContentLoaded", initializeComposer);
     document.addEventListener("htmx:load", initializeComposer);
+    function initializeJumpToLatest() {
+        const container = document.getElementById("doc-container");
+        const button = document.getElementById("doc-jump-bottom");
+        if (!container || !button || container.dataset.jumpReady) return;
+        container.dataset.jumpReady = "true";
+        let showTimer = null;
+        function awayFromBottom() {
+            return document.readyState === "complete" && container.clientHeight > 0 &&
+                container.scrollHeight - container.clientHeight - container.scrollTop > 24;
+        }
+        function update() {
+            if (!awayFromBottom()) {
+                clearTimeout(showTimer);
+                showTimer = null;
+                button.hidden = true;
+            } else if (button.hidden && showTimer === null) {
+                showTimer = setTimeout(() => {
+                    showTimer = null;
+                    button.hidden = !awayFromBottom();
+                }, 150);
+            }
+        }
+        button.addEventListener("click", () => {
+            container.scrollTop = container.scrollHeight;
+            update();
+        });
+        container.addEventListener("scroll", update, { passive: true });
+        // Includes viewport/composer changes, appended cards and preview/image growth.
+        const observer = new ResizeObserver(update);
+        observer.observe(container);
+        observer.observe(document.getElementById("doc-container-inner"));
+        window.addEventListener("load", update, { once: true });
+        container.addEventListener("htmx:beforeCleanupElement", event => {
+            if (event.target !== container) return;
+            clearTimeout(showTimer);
+            observer.disconnect();
+            window.removeEventListener("load", update);
+        });
+        update();
+    }
+    document.addEventListener("DOMContentLoaded", initializeJumpToLatest);
+    document.addEventListener("htmx:load", initializeJumpToLatest);
     document.addEventListener("htmx:afterSettle", event => {
         const request = event.detail.requestConfig;
         if (request?.path !== "/tray/doc-create" || request.verb !== "post" || !event.detail.successful) return;

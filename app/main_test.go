@@ -654,7 +654,7 @@ func TestTrayLayoutTemplate(t *testing.T) {
 			}
 		}
 		visit(document)
-		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "doc-list", "uploadform", "tray-navigation"} {
+		for _, id := range []string{"page-container", "header", "footer", "tray-container", "workspace-container", "doc-container", "doc-list", "doc-jump-bottom", "uploadform", "tray-navigation"} {
 			if elements[id] == nil {
 				t.Fatalf("tray element %q missing (tag edit: %t)", id, tagEdit)
 			}
@@ -664,6 +664,18 @@ func TestTrayLayoutTemplate(t *testing.T) {
 		}
 		if elements["doc-list"].Data != "ul" || elements["doc-list"].Parent.Parent != elements["doc-container"] {
 			t.Error("the append target must remain inside the existing message scroll owner")
+		}
+		jump := elements["doc-jump-bottom"]
+		jumpHidden := false
+		for _, attr := range jump.Attr {
+			if attr.Key == "hidden" {
+				jumpHidden = true
+			}
+		}
+		if jump.Data != "button" || attribute(jump, "type") != "button" || !jumpHidden ||
+			attribute(jump, "aria-label") != "Jump to latest message" || attribute(jump, "aria-controls") != "doc-container" ||
+			jump.Parent != elements["workspace-container"] || attribute(jump, "hx-get") != "" || attribute(jump, "hx-post") != "" {
+			t.Error("jump-to-latest must start hidden and scroll locally from outside the message scroll owner/composer")
 		}
 		menu := elements["tray-navigation"]
 		if menu.Data != "nav" || attribute(menu, "popover") != "auto" || attribute(menu, "aria-label") == "" || menu.Parent != elements["page-container"] {

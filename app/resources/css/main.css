@@ -151,6 +151,7 @@ body {
     flex-direction: column;
 }
 #workspace-container {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	flex: 1;
@@ -191,6 +192,32 @@ body {
 #doc-container-inner {
     margin: 0;
     padding: 1em;
+}
+#doc-jump-bottom {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0.5rem;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--gray-02);
+    border-radius: 50%;
+    background: var(--tray-bg);
+    color: var(--color-01);
+    box-shadow: 2px 1px 5px var(--shadow-bg);
+    cursor: pointer;
+}
+#doc-jump-bottom .material-symbols-outlined {
+    font-size: 28px;
+}
+#doc-jump-bottom[hidden] {
+    display: none;
+}
+#doc-jump-bottom:focus-visible {
+    outline: 4px solid var(--color-01);
+    outline-offset: 2px;
 }
 #uploadform {
 	flex-shrink: 0;

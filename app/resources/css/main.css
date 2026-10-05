@@ -498,8 +498,11 @@ textarea[name=title] {
     font-size: var(--message-tag-touch-font-size, 20px);
     text-shadow: 0 0 0 #29292977;
 }
-.doc-entry-tagview-segment:disabled {
-    opacity: 0.6;
+.doc-entry-tagview-segment:disabled,
+.doc-entry-button button:disabled,
+.doc-entry .doc-entry-undo:disabled {
+    /* The temporary tray lock must not fade unrelated message controls. */
+    opacity: 1;
     cursor: default;
 }
 
@@ -516,7 +519,7 @@ textarea[name=title] {
     .doc-entry-tagview:hover ~ .doc-entry-stats {
         margin-bottom: -9px;
     }
-    .doc-entry-button button:hover:not(:disabled) {
+    .doc-entry-button button:hover {
         background: var(--gray-01);
     }
 }
@@ -806,9 +809,10 @@ tt {
 }
 .doc-entry.doc-type-removed {
     border-color: #d96969;
-    border-width: 2px;
+    border-width: 1px;
     border-style:inset;
-    padding: 0.5em 1em;
+    padding: 4px 8px;
+    font-size: 0.875rem;
     background-color: #d9696966 !important;
     /* box-shadow: none; */
     color: var(--gray-08);
@@ -841,10 +845,6 @@ tt {
     outline: 4px solid var(--color-01);
     outline-offset: 2px;
 }
-.doc-entry-button button:disabled {
-    opacity: 0.6;
-    cursor: default;
-}
 .doc-entry.doc-type-removed {
 	align-items: center;
 	flex-wrap: wrap;
@@ -854,9 +854,9 @@ tt {
 	align-self: center;
 	width: auto;
 	height: auto;
-	min-height: 44px;
+	min-height: 32px;
 	aspect-ratio: auto;
-	padding: 0.375rem 0.75rem;
+	padding: 2px 8px;
 	border: 1px solid var(--color-01);
 	border-radius: 6px;
 	background: #fff;
@@ -871,10 +871,6 @@ tt {
 .doc-entry .doc-entry-undo:focus-visible {
 	outline: 4px solid var(--color-01);
 	outline-offset: 2px;
-}
-.doc-entry .doc-entry-undo:disabled {
-	opacity: 0.6;
-	cursor: default;
 }
 .doc-entry-undo-status {
 	flex-basis: 100%;
@@ -1036,10 +1032,6 @@ tt {
         border-width: 1px;
         gap: 4px;
         font-size: 0.8125rem;
-    }
-    .doc-entry .doc-entry-undo {
-        min-height: 32px;
-        padding: 2px 8px;
     }
     .doc-entry-inlist {
         flex-direction: column;

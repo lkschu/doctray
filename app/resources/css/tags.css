@@ -72,10 +72,11 @@
     border: 3px solid var(--tag-outline);
     background: #fff;
 }
-.tag-filter-chip:hover:not(:disabled) {
+.tag-filter-chip:hover {
     background: color-mix(in srgb, var(--tag-color, var(--gray-06)) 12%, white);
 }
-.tag-star-filter:hover:not(:disabled),
+.tag-star-filter:hover,
+.tag-filter-toolbar .tag-manage-button:hover,
 .tag-manage-button:hover:not(:disabled) {
     border-color: var(--gray-06);
 }
@@ -85,7 +86,7 @@
     /* Thicken the selected outline without moving neighbouring chips. */
     box-shadow: inset 0 0 0 1px var(--tag-outline);
 }
-.tag-filter-chip[aria-pressed="true"]:hover:not(:disabled) {
+.tag-filter-chip[aria-pressed="true"]:hover {
     background: color-mix(in srgb, var(--tag-color, var(--gray-06)) 40%, white);
 }
 .tag-filter-chip:focus-visible,
@@ -99,6 +100,10 @@
 .tag-manage-button:disabled {
     opacity: 0.6;
     cursor: default;
+}
+.tag-filter-panel button:disabled {
+    /* Keep browsing filters steady while the shared tray lock is active. */
+    opacity: 1;
 }
 .tag-filter-symbol {
     flex-shrink: 0;
@@ -134,8 +139,7 @@
     font-size: 20px;
     line-height: 1;
 }
-.tag-star-filter[aria-pressed="true"],
-.tag-star-filter[aria-pressed="true"]:hover:not(:disabled) {
+.tag-star-filter[aria-pressed="true"] {
     background: #f6cd69;
     border-color: #a16806;
     color: #573900;

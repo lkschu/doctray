@@ -49,7 +49,7 @@ import (
 
 var DATA_BASE_PATH = ""
 
-const auth_session_duration = 8 * time.Hour
+const auth_session_duration = 7 * 24 * time.Hour
 const maxPreviewsPerMessage = 3
 const previewWorkerCount = 2
 const previewJobQueueSize = 128
@@ -1164,6 +1164,18 @@ func get_uuid(c *gin.Context) string {
 
 }
 
+func newSessionStore(authKey, encryptionKey []byte, secure bool) cookie.Store {
+	store := cookie.NewStore(authKey, encryptionKey)
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   int(auth_session_duration.Seconds()),
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+	})
+	return store
+}
+
 func main() {
 	logger := configureLogger()
 	slog.SetDefault(logger)
@@ -1229,13 +1241,7 @@ func main() {
 	registerWebAssets(router)
 	router.LoadHTMLGlob("templates/**/*")
 
-	store := cookie.NewStore([]byte(sessionAuthKey), []byte(sessionEncryptionKey))
-	store.Options(sessions.Options{
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   sessionCookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
+	store := newSessionStore([]byte(sessionAuthKey), []byte(sessionEncryptionKey), sessionCookieSecure)
 	router.Use(sessions.Sessions("session", store)) // Sessions must be Use(d) before oidcauth, as oidcauth requires sessions
 
 	router.MaxMultipartMemory = 10 << 20 // max 10 MiB
@@ -1243,7 +1249,7 @@ func main() {
 	router.GET("/login", auth_handler.Login()) // Unnecessary, as requesting a "AuthRequired" resource will initiate login, but potentially convenient
 	router.GET("/callback", auth_handler.Callback_handler())
 	router.GET("/logout", auth_handler.LogoutWithRedirect("/"))
-	registerSharing(router, auth_handler.GetUserID, previewJobs)
+	registerSharing(router, sharingSessionUserID(store, auth_handler.GetUserID), previewJobs)
 
 	// Allow access to / for unauthenticated users, but authenticated users will be greated by name.
 	router.GET("/", func(c *gin.Context) {

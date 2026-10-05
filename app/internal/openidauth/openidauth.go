@@ -40,6 +40,12 @@ const (
 	maxPendingAuthTransactions = 128
 )
 
+// Stable categories for callers; never include cookie contents or user identity.
+var (
+	ErrInvalidSession = errors.New("invalid authenticated session")
+	ErrSessionExpired = errors.New("authenticated session expired")
+)
+
 type pendingAuthTransaction struct {
 	nonce          string
 	redirectTo     string
@@ -249,25 +255,24 @@ func (handler *AuthHandler) LogoutWithRedirect(redirect_to string) gin.HandlerFu
 }
 
 func (handler *AuthHandler) IsLoggedIn(ctx *gin.Context) bool {
-	session := sessions.Default(ctx)
-	if session.Get(handler.session_label_userid) == nil {
-		return false
-	}
-	expiresAt, ok := session.Get(handler.session_label_expired).(int64)
-	return ok && expiresAt > time.Now().Unix()
+	_, err := handler.GetUserID(ctx)
+	return err == nil
 }
 
 func (handler *AuthHandler) GetUserID(ctx *gin.Context) (string, error) {
-	if ! handler.IsLoggedIn(ctx) {
-		return "", errors.New("Not logged in")
-	}
 	session := sessions.Default(ctx)
-	uid := session.Get(handler.session_label_userid)
-	if uid != nil {
-		return uid.(string), nil
-	} else {
-		return "", errors.New("No UID")
+	uid, ok := session.Get(handler.session_label_userid).(string)
+	if !ok || uid == "" {
+		return "", ErrInvalidSession
 	}
+	expiresAt, ok := session.Get(handler.session_label_expired).(int64)
+	if !ok {
+		return "", ErrInvalidSession
+	}
+	if expiresAt <= time.Now().Unix() {
+		return "", ErrSessionExpired
+	}
+	return uid, nil
 }
 
 func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
@@ -292,6 +297,14 @@ func (handler *AuthHandler) Ensure_loggedin() gin.HandlerFunc{
 		handler.startLogin(ctx, returnTo)
 	}
 
+}
+
+// Only a completed, verified login starts a new fixed local session lifetime.
+func (handler *AuthHandler) saveAuthenticatedSession(ctx *gin.Context, subject string) error {
+	session := sessions.Default(ctx)
+	session.Set(handler.session_label_userid, subject)
+	session.Set(handler.session_label_expired, time.Now().Unix()+handler.expirationTimer)
+	return session.Save()
 }
 
 func (handler *AuthHandler) Callback_handler() func(ctx *gin.Context) {
@@ -358,9 +371,7 @@ func (handler *AuthHandler) Callback_handler() func(ctx *gin.Context) {
 			return
 		}
 
-		session.Set(handler.session_label_userid, idToken.Subject)
-		session.Set(handler.session_label_expired, time.Now().Unix() + handler.expirationTimer)
-		err = session.Save()
+		err = handler.saveAuthenticatedSession(ctx, idToken.Subject)
 		if err != nil {
 			logger.Error("OIDC callback failed", "event", "oidc.callback.failed", "stage", "session_save", "error", err)
 			http.Error(w, "Internal error", http.StatusInternalServerError)

@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"strings"
 
+	"doctray/internal/openidauth"
+	"doctray/internal/requestlog"
+
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,12 +42,37 @@ func shareError(c *gin.Context, status int, message string, loginRequired bool) 
 	c.HTML(status, "posts/share-error.tmpl", gin.H{"Message": message, "LoginRequired": loginRequired})
 }
 
+// Gin's session adapter can panic after a cookie decode error. Check the same
+// request-local store first so shares receive a safe 401 and a diagnostic reason.
+func sharingSessionUserID(store sessions.Store, userID func(*gin.Context) (string, error)) func(*gin.Context) (string, error) {
+	return func(c *gin.Context) (string, error) {
+		if _, err := store.Get(c.Request, "session"); err != nil {
+			return "", openidauth.ErrInvalidSession
+		}
+		return userID(c)
+	}
+}
+
 // Use the existing OIDC session checker, but fail rather than redirect an expired
 // POST into login: shared content is not retained or replayed after authentication.
 func registerSharing(router *gin.Engine, userID func(*gin.Context) (string, error), previews *previewJobQueue) {
 	router.POST("/tray/share", func(c *gin.Context) {
 		subject, err := userID(c)
 		if err != nil || subject == "" {
+			reason := "invalid_session"
+			if _, cookieErr := c.Request.Cookie("session"); cookieErr != nil {
+				reason = "missing_cookie"
+			} else if errors.Is(err, openidauth.ErrSessionExpired) {
+				reason = "expired_session"
+			}
+			// Allowlist this context hint; never log raw headers or auth errors.
+			fetchSite := c.GetHeader("Sec-Fetch-Site")
+			switch fetchSite {
+			case "same-origin", "same-site", "cross-site", "none":
+			default:
+				fetchSite = "unknown"
+			}
+			requestlog.FromGin(c).Warn("share authentication rejected", "event", "share.auth.rejected", "reason", reason, "fetch_site", fetchSite)
 			shareError(c, http.StatusUnauthorized, "You need to log in before sharing to DocTray. Nothing was saved.", true)
 			return
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -16,12 +17,24 @@ import (
 	"testing"
 	"time"
 
+	"doctray/internal/openidauth"
 	"doctray/internal/requestlog"
 
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 func sharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJobQueue, *bytes.Buffer) {
+	t.Helper()
+	return sharingTestRouterWithUserID(t, func(c *gin.Context) (string, error) {
+		if !loggedIn {
+			return "", openidauth.ErrSessionExpired
+		}
+		return "sender", nil
+	})
+}
+
+func sharingTestRouterWithUserID(t *testing.T, userID func(*gin.Context) (string, error)) (*gin.Engine, *previewJobQueue, *bytes.Buffer) {
 	t.Helper()
 	previousDirectory := DATA_BASE_PATH
 	DATA_BASE_PATH = t.TempDir()
@@ -41,13 +54,10 @@ func sharingTestRouter(t *testing.T, loggedIn bool) (*gin.Engine, *previewJobQue
 	logs := new(bytes.Buffer)
 	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	router.Use(requestlog.Middleware(logger))
+	store := newSessionStore([]byte("01234567890123456789012345678901"), []byte("01234567890123456789012345678901"), true)
+	router.Use(sessions.Sessions("session", store))
 	queue := &previewJobQueue{jobs: make(chan previewJob, previewJobQueueSize), activeJobs: make(map[string]bool), logger: logger}
-	registerSharing(router, func(c *gin.Context) (string, error) {
-		if !loggedIn {
-			return "", errors.New("session expired")
-		}
-		return "sender", nil
-	}, queue)
+	registerSharing(router, sharingSessionUserID(store, userID), queue)
 	return router, queue, logs
 }
 
@@ -305,6 +315,93 @@ func TestExpiredShareDoesNotReadBody(t *testing.T) {
 	router.ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Error("expired session must fail before parsing or retaining shared data")
+	}
+}
+
+func TestShareAuthenticationDiagnostics(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		cookie     bool
+		broken     bool
+		authError  error
+		fetchSite  string
+		reason     string
+		loggedSite string
+	}{
+		{name: "missing cookie", authError: openidauth.ErrInvalidSession, fetchSite: "cross-site", reason: "missing_cookie", loggedSite: "cross-site"},
+		{name: "expired session", cookie: true, authError: fmt.Errorf("private error token: %w", openidauth.ErrSessionExpired), fetchSite: "same-origin", reason: "expired_session", loggedSite: "same-origin"},
+		{name: "invalid authenticated data", cookie: true, authError: openidauth.ErrInvalidSession, reason: "invalid_session", loggedSite: "unknown"},
+		{name: "undecodable cookie", cookie: true, broken: true, reason: "invalid_session", loggedSite: "unknown"},
+		{name: "private header and error", cookie: true, authError: errors.New("private error token"), fetchSite: "private header token", reason: "invalid_session", loggedSite: "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			router, queue, logs := sharingTestRouterWithUserID(t, func(c *gin.Context) (string, error) {
+				called = true
+				return "", test.authError
+			})
+			router.GET("/test-session", func(c *gin.Context) {
+				session := sessions.Default(c)
+				session.Set("auth_login_binding", "private binding token")
+				if err := session.Save(); err != nil {
+					t.Fatal(err)
+				}
+			})
+			request := httptest.NewRequest(http.MethodPost, "/tray/share?private-query-token", nil)
+			request.Body = unreadShareBody{}
+			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			request.Header.Set("Authorization", "Bearer private authorization token")
+			request.Header.Set("Referer", "https://private.example/source")
+			cookieValue := ""
+			if test.cookie {
+				if test.broken {
+					cookieValue = "private broken cookie token"
+					request.AddCookie(&http.Cookie{Name: "session", Value: cookieValue})
+				} else {
+					seed := httptest.NewRecorder()
+					router.ServeHTTP(seed, httptest.NewRequest(http.MethodGet, "/test-session", nil))
+					cookies := seed.Result().Cookies()
+					if len(cookies) != 1 {
+						t.Fatal("diagnostic fixture must produce one cookie")
+					}
+					cookieValue = cookies[0].Value
+					request.AddCookie(cookies[0])
+				}
+			}
+			logs.Reset()
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			if response.Code != http.StatusUnauthorized || response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Location") != "" || !strings.Contains(response.Body.String(), `href="/login"`) {
+				t.Fatal("all authentication rejections must fail safely before reading the body")
+			}
+			if called == test.broken {
+				t.Error("an undecodable cookie must be rejected before calling Gin's session adapter")
+			}
+			count := 0
+			for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+				var entry map[string]any
+				if err := json.Unmarshal([]byte(line), &entry); err != nil {
+					t.Fatal(err)
+				}
+				if entry["event"] == "share.auth.rejected" {
+					count++
+					if entry["reason"] != test.reason || entry["fetch_site"] != test.loggedSite || entry["level"] != "WARN" {
+						t.Error("authentication diagnostics must contain only the expected stable categories")
+					}
+				}
+			}
+			if count != 1 || len(queue.jobs) != 0 {
+				t.Error("rejected shares must log one diagnostic and queue no preview work")
+			}
+			for _, private := range []string{"private error token", "private header token", "private binding token", "private authorization token", "private.example", "private-query-token", cookieValue} {
+				if private != "" && (strings.Contains(logs.String(), private) || strings.Contains(response.Body.String(), private)) {
+					t.Error("diagnostics and failure pages must not disclose cookies, errors or private headers")
+				}
+			}
+			if _, err := os.Stat(filepath.Join(DATA_BASE_PATH, "data", "sender.json")); !os.IsNotExist(err) {
+				t.Error("authentication rejection must not create a profile")
+			}
+		})
 	}
 }
 

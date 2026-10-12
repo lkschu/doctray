@@ -46,7 +46,7 @@
     let trayFocusID = null;
     function updateWorkspaceControls() {
         const editing = !!document.getElementById("form")?.dataset.editing;
-        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button:not(.tray-navigation-toggle), .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
+        document.querySelectorAll('#workspace-container [hx-target="#workspace-container"], #tags-edit-button, #tag-editor-form button:not(.tray-navigation-toggle), #doc-load-older, .doc-entry-button button, .doc-entry-tagview-segment, .doc-entry-undo').forEach(control => {
             control.disabled = !!trayRequest || (editing && control.matches(".doc-entry-button-edit button"));
         });
         updateTagEditorRows();
@@ -54,7 +54,7 @@
     document.addEventListener("htmx:beforeRequest", event => {
         if (event.defaultPrevented || !event.target.getAttribute("hx-sync")?.startsWith("#tray-container:")) return;
         // Disabling a native button can blur it before HTMX preserves focus.
-        trayFocusID = event.target === document.activeElement && event.target.matches('.doc-entry-button-fav button, .doc-entry-button-edit button, .doc-entry-tagview-segment, .tag-filter-chip, .tag-star-filter, #clear-filters-button, #tag-add-button')
+        trayFocusID = event.target === document.activeElement && event.target.matches('.doc-entry-button-fav button, .doc-entry-button-edit button, .doc-entry-tagview-segment, .tag-filter-chip, .tag-star-filter, #clear-filters-button, #tag-add-button, #doc-load-older')
             ? event.target.id : null;
         trayRequest = event.detail.xhr;
         updateWorkspaceControls();
@@ -80,6 +80,92 @@
         if (event.target !== document.body && event.target.id !== trayFocusID) trayFocusID = null;
     });
     document.addEventListener("htmx:load", updateWorkspaceControls);
+
+    // History uses the same tray request lock as filters and mutations. Only
+    // an explicit click loads a batch; never drain the archive in the background.
+    const historyScroll = new WeakMap();
+    function isHistoryRequest(event) {
+        return event.detail.requestConfig?.path?.split("?")[0] === "/tray/history";
+    }
+    function placeRetainedRestores() {
+        const list = document.getElementById("doc-list");
+        if (!list) return;
+        // IDs increase with append order. Only retained/restored outliers need
+        // relocation; don't rebuild the list or disturb existing card nodes.
+        list.parentNode.querySelectorAll("[data-history-restored]").forEach(card => {
+            const next = [...list.children].find(child => child !== card &&
+                child.matches(".doc-entry-container") && Number(child.dataset.docId) > Number(card.dataset.docId));
+            if (card.parentNode !== list || card.nextElementSibling !== (next || null)) {
+                list.insertBefore(card, next || null);
+            }
+        });
+        const undoList = document.getElementById("doc-undo-list");
+        if (undoList) undoList.hidden = !undoList.querySelector(".doc-entry-container");
+    }
+    document.addEventListener("htmx:afterSwap", event => {
+        if (event.detail.requestConfig?.path !== "/tray/doc-restore") return;
+        document.querySelectorAll("#doc-undo-list .doc-entry-container").forEach(card => {
+            if (!card.querySelector(".doc-type-removed")) card.dataset.historyRestored = "true";
+        });
+        placeRetainedRestores();
+    });
+    document.addEventListener("htmx:beforeRequest", event => {
+        if (!isHistoryRequest(event)) return;
+        const status = document.getElementById("doc-history-status");
+        if (status) status.textContent = "Loading older messages…";
+    });
+    document.addEventListener("htmx:beforeSwap", event => {
+        if (!isHistoryRequest(event) || !event.detail.shouldSwap) return;
+        const container = document.getElementById("doc-container");
+        const top = container.getBoundingClientRect().top;
+        const anchor = [...container.querySelectorAll(".doc-entry-container")]
+            .find(card => card.getBoundingClientRect().bottom > top);
+        historyScroll.set(event.detail.xhr, {
+            container, anchor, top: anchor?.getBoundingClientRect().top,
+            scrollTop: container.scrollTop,
+            focused: trayFocusID === "doc-load-older"
+        });
+        // Restoring an older Undo card can make it eligible for a later batch.
+        // Keep the existing card rather than inserting duplicate IDs/controls.
+        const fragment = document.createElement("template");
+        fragment.innerHTML = event.detail.serverResponse;
+        fragment.content.querySelectorAll(".doc-entry-container").forEach(card => {
+            if (document.getElementById(card.id)) card.remove();
+        });
+        event.detail.serverResponse = fragment.innerHTML;
+    });
+    document.addEventListener("htmx:afterSwap", event => {
+        if (!isHistoryRequest(event)) return;
+        const saved = historyScroll.get(event.detail.xhr);
+        if (!saved) return;
+        historyScroll.delete(event.detail.xhr);
+        if (!saved.container.isConnected) return;
+        // HTMX emits afterSwap for each inserted root; handle the batch once.
+        placeRetainedRestores();
+        if (saved.anchor?.isConnected) {
+            saved.container.scrollTop += saved.anchor.getBoundingClientRect().top - saved.top;
+        } else saved.container.scrollTop = saved.scrollTop;
+        const status = document.getElementById("doc-history-status");
+        const button = document.getElementById("doc-load-older");
+        if (status) status.textContent = button ? "Older messages loaded." : "All matching messages loaded.";
+        // The replacement button is now above the newly prepended batch.
+        // Keep focus in the visible history rather than on an off-screen button.
+        if (saved.focused && saved.anchor?.isConnected) {
+            saved.anchor.tabIndex = -1;
+            saved.anchor.focus({ preventScroll: true });
+        } else if (saved.focused && status) {
+            status.tabIndex = -1;
+            status.focus({ preventScroll: true });
+        }
+    });
+    document.addEventListener("htmx:afterRequest", event => {
+        if (!isHistoryRequest(event) || event.detail.successful) return;
+        const status = document.getElementById("doc-history-status");
+        if (!status) return;
+        status.textContent = event.detail.xhr.status === 409 || event.detail.xhr.status === 400
+            ? "History or filters changed. Reload the tray to continue; copy any draft first."
+            : "Could not load older messages. Try again, or log in if your session expired.";
+    });
 
     // Browser-only disclosure state; desktop always shows the full controls.
     const narrowLayout = window.matchMedia("(max-width: 48rem)");

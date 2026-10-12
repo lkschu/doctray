@@ -1117,10 +1117,11 @@ func TestTagDraftReorderingPreservesIdentity(t *testing.T) {
 	if !reflect.DeepEqual(profile.Tags, want) || len(profile.Posts) != 1 || !reflect.DeepEqual(profile.Posts[0].Tags, []string{"reading"}) {
 		t.Fatal("Save must persist the new tag order without changing message assignments")
 	}
-	if len(profile.Posts[0].Tags_enabled) != len(want) {
+	view := initialTrayPage(profile, false)
+	if len(view.Posts[0].Tags_enabled) != len(want) {
 		t.Fatal("message tag bars must include every reordered tag")
 	}
-	for index, segment := range profile.Posts[0].Tags_enabled {
+	for index, segment := range view.Posts[0].Tags_enabled {
 		if segment.Tag.ID != want[index].ID || segment.Enabled != (want[index].ID == "reading") {
 			t.Error("message tag bars must follow the saved order while assignment remains ID-based")
 		}

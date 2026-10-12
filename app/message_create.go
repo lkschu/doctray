@@ -67,6 +67,9 @@ func createMessage(c *gin.Context, subject, text string, files []*multipart.File
 				message.Files = append(message.Files, attachment)
 			}
 		}
+		// Persist new messages with the same defaults as profile reads, avoiding
+		// a normalization-only rewrite on the share redirect's tray load.
+		normalizeStoredPost(&message, profile.Tag_map)
 		profile.Posts = append(profile.Posts, message)
 		if createErr = writeProfile(profile, subject); createErr != nil {
 			return

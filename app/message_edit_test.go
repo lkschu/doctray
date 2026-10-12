@@ -134,6 +134,9 @@ func TestMessageEditReadAndSave(t *testing.T) {
 		t.Error("Save must retain unchanged previews, remove obsolete ones and queue only new pending URLs")
 	}
 	body := response.Body.String()
+	if !strings.Contains(body, `id="doc-tag-0-reading"`) {
+		t.Error("edited cards must explicitly rebuild tag controls after a view-free profile read")
+	}
 	if !strings.Contains(body, `class="doc-entry doc-type-file"`) || strings.Contains(body, `class="doc-entry-container"`) || strings.Contains(body, "Untouched") || strings.Contains(body, "<notes>") || !strings.Contains(body, `src="/media/notes.txt.thumb.png"`) {
 		t.Error("Save must return one safe live list item, not a new message/list or original-file preview")
 	}

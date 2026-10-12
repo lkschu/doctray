@@ -551,14 +551,13 @@ func add_formatting_tags_to_string(s string) string {
 func render_workspace_container_to_html(c *gin.Context) {
 	sub := get_uuid(c)
 	withProfileLock(sub, func() {
-		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", renderPosts(get_data(sub), true))
+		c.HTML(http.StatusOK, "posts/workspace-container.tmpl", initialTrayPage(get_data(sub), true))
 	})
 }
 
 // Creation responds only with the saved card, using the same filters as a list load.
 func renderCreatedPost(c *gin.Context, profile profile_data, created post) {
 	profile.Posts = []post{created}
-	preparePostView(&profile.Posts[0], profile.Tags, profile.Tag_map)
 	visible := renderPosts(profile, false).Posts
 	if len(visible) == 0 {
 		c.Status(http.StatusNoContent)
@@ -570,11 +569,18 @@ func renderCreatedPost(c *gin.Context, profile profile_data, created post) {
 // Unlike ordinary profile reads, a full tray load ends Undo. Call under the
 // profile lock so restore and cleanup cannot operate on the same post at once.
 func loadTrayProfile(subject string, fullPage bool, logger *slog.Logger) profile_data {
-	profile := get_data(subject)
-	if fullPage {
-		purgeDeletedPosts(&profile, filepath.Join(DATA_BASE_PATH, "uploads", subject), logger)
+	profile, changed, err := readProfileWithChanges(subject, logger)
+	if err != nil {
+		panic("could not read profile")
 	}
-	set_data(profile, subject)
+	if fullPage {
+		if purgeDeletedPosts(&profile, filepath.Join(DATA_BASE_PATH, "uploads", subject), logger) {
+			changed = true
+		}
+	}
+	if changed {
+		set_data(profile, subject)
+	}
 	return profile
 }
 
@@ -619,7 +625,18 @@ func removeAttachment(directory string, file docentry_file, logger *slog.Logger)
 
 // Called only on full tray loads, under the profile lock. Failed records remain
 // marked so a later load can retry, including after a partially completed purge.
-func purgeDeletedPosts(profile *profile_data, directory string, logger *slog.Logger) {
+func purgeDeletedPosts(profile *profile_data, directory string, logger *slog.Logger) bool {
+	hasDeleted := false
+	for _, message := range profile.Posts {
+		if message.DeletedAt != nil {
+			hasDeleted = true
+			break
+		}
+	}
+	if !hasDeleted {
+		return false
+	}
+	originalCount := len(profile.Posts)
 	kept := make([]post, 0, len(profile.Posts))
 	for _, message := range profile.Posts {
 		if message.DeletedAt == nil {
@@ -637,6 +654,7 @@ func purgeDeletedPosts(profile *profile_data, directory string, logger *slog.Log
 		}
 	}
 	profile.Posts = kept
+	return len(kept) != originalCount
 }
 
 func (d docentry_file) String() string {
@@ -723,6 +741,8 @@ type profile_data struct {
 	Tag_map        map[string]*tag `json:"-"` // id -> tag mapping
 	Tag_edit       bool            `json:"tag_edit"`
 	Only_favorites bool            `json:"only_starred"`
+	OlderCursor    string          `json:"-"`
+	RemovedPosts   []post          `json:"-"`
 }
 
 func (p profile_data) HasActiveFilters() bool {
@@ -975,35 +995,18 @@ func renderPosts(profile profile_data, includeRemoved bool) profile_data {
 			}
 			continue
 		}
-		if profile.Only_favorites && !p.Starred {
+		if !postMatchesFilters(profile, p) {
 			continue
-		}
-
-		// all disabled -> no filtering
-		active_tag_filter := false
-		for _, t := range profile.Tags {
-			if t.Enabled {
-				active_tag_filter = true
-				break
-			}
-		}
-
-		if active_tag_filter {
-			posts_viewable_after_tag_filter := false
-			for _, tag_id := range p.Tags {
-				if tag_pointer, ok := profile.Tag_map[tag_id]; ok && tag_pointer.Enabled {
-					posts_viewable_after_tag_filter = true
-					break
-				}
-			}
-			if !posts_viewable_after_tag_filter {
-				continue
-			}
 		}
 		// rendered_posts[i] = render_post(p)
 		rendered_posts = append(rendered_posts, render_post(p))
 	}
 	profile.Posts = rendered_posts
+	for i := range profile.Posts {
+		if profile.Posts[i].DeletedAt == nil {
+			preparePostView(&profile.Posts[i], profile.Tags, profile.Tag_map)
+		}
+	}
 	return profile
 }
 
@@ -1016,57 +1019,77 @@ func get_data(sub string) profile_data {
 }
 
 func readProfile(sub string) (profile_data, error) {
+	profile, _, err := readProfileWithChanges(sub, nil)
+	return profile, err
+}
+
+// Ordinary reads normalize stored fields but leave card-only view data lazy.
+// The tray caller also needs to know whether normalization merits a save.
+func readProfileWithChanges(sub string, logger *slog.Logger) (profile_data, bool, error) {
+	started := time.Now()
 	file, err := os.Open(fmt.Sprintf("%s/data/%s.json", DATA_BASE_PATH, sub))
 	if errors.Is(err, fs.ErrNotExist) {
-		return profile_data{}, nil
+		return profile_data{}, false, nil
 	}
 	if err != nil {
-		return profile_data{}, err
+		return profile_data{}, false, err
 	}
 	defer file.Close()
 
 	bytes_read, err := io.ReadAll(file)
 	if err != nil {
-		return profile_data{}, err
+		return profile_data{}, false, err
 	}
-	// data := make([]test_data, 1)
+	readAt := time.Now()
 	profile_data := profile_data{}
-	profile_data.Tag_map = make(map[string]*tag)
 	if err := json.Unmarshal(bytes_read, &profile_data); err != nil {
-		return profile_data, err
+		return profile_data, false, err
 	}
-
-	// Validate Tags
-	profile_data.normalize_tag_nrs()
-	drop_tags_by_idx := make([]int, 0)
-	for i, t := range profile_data.Tags {
-		if _, ok := profile_data.Tag_map[t.ID]; ok {
-			// key is known, duplicate!
-			drop_tags_by_idx = append(drop_tags_by_idx, i)
-			continue
-		} else {
-			profile_data.Tag_map[t.ID] = &profile_data.Tags[i]
-		}
+	decodedAt := time.Now()
+	changed := normalizeProfile(&profile_data)
+	if logger != nil {
+		logger.Debug("profile read completed", "event", "persistence.read.completed",
+			"read_us", readAt.Sub(started).Microseconds(), "decode_us", decodedAt.Sub(readAt).Microseconds(),
+			"normalize_us", time.Since(decodedAt).Microseconds(), "post_count", len(profile_data.Posts))
 	}
-
-	if x := len(drop_tags_by_idx); x > 0 {
-		slog.Warn("duplicate profile tags removed", "event", "persistence.tags_removed", "count", x)
-		for i := len(drop_tags_by_idx) - 1; i > 0; i-- {
-			profile_data.Tags = append(profile_data.Tags[:i], profile_data.Tags[i+1:]...)
-		}
-	}
-
-	for i := range profile_data.Posts {
-		preparePostView(&profile_data.Posts[i], profile_data.Tags, profile_data.Tag_map)
-	}
-
-	return profile_data, nil
+	return profile_data, changed, nil
 }
 
-// Reuse profile-load defaults for a new card without rereading the whole profile.
-func preparePostView(p *post, tags []tag, tagMap map[string]*tag) {
+func normalizeProfile(profile *profile_data) bool {
+	changed := false
+	seen := make(map[string]bool, len(profile.Tags))
+	kept := profile.Tags[:0]
+	for _, t := range profile.Tags {
+		if seen[t.ID] {
+			changed = true
+			continue
+		}
+		seen[t.ID] = true
+		kept = append(kept, t)
+	}
+	if changed {
+		slog.Warn("duplicate profile tags removed", "event", "persistence.tags_removed", "count", len(profile.Tags)-len(kept))
+	}
+	profile.Tags = kept
+	profile.normalize_tag_nrs()
+	// Build pointers after compaction, so every lookup refers to the retained tag.
+	profile.Tag_map = make(map[string]*tag, len(profile.Tags))
+	for i := range profile.Tags {
+		profile.Tag_map[profile.Tags[i].ID] = &profile.Tags[i]
+	}
+	for i := range profile.Posts {
+		if normalizeStoredPost(&profile.Posts[i], profile.Tag_map) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+func normalizeStoredPost(p *post, tagMap map[string]*tag) bool {
+	changed := false
 	if p.Type != doctype_file && p.Type != doctype_mesage && p.Type != doctype_image {
 		p.Type = doctype_mesage
+		changed = true
 	}
 	for i, file := range p.Files {
 		if file.Icon == "" {
@@ -1075,20 +1098,40 @@ func preparePostView(p *post, tags []tag, tagMap map[string]*tag) {
 				icon = known_file_suffixes[".default"]
 			}
 			p.Files[i].Icon = icon
+			changed = true
 		}
 	}
-	activeTags := make(map[string]bool)
-	validTags := make([]string, 0)
+	invalidTags := false
+	for _, id := range p.Tags {
+		if _, ok := tagMap[id]; !ok || id == "" {
+			invalidTags = true
+			break
+		}
+	}
+	if p.Tags == nil || invalidTags {
+		validTags := make([]string, 0, len(p.Tags))
+		for _, id := range p.Tags {
+			if _, ok := tagMap[id]; ok && id != "" {
+				validTags = append(validTags, id)
+			}
+		}
+		p.Tags = validTags
+		changed = true
+	}
+	return changed
+}
+
+// Standalone/new cards share the stored defaults, but only rendered cards build
+// per-tag view data. Call on the final slice element so BackRef stays valid.
+func preparePostView(p *post, tags []tag, tagMap map[string]*tag) {
+	normalizeStoredPost(p, tagMap)
+	activeTags := make(map[string]bool, len(p.Tags))
 	for _, id := range p.Tags {
 		activeTags[id] = true
-		if _, ok := tagMap[id]; ok && id != "" {
-			validTags = append(validTags, id)
-		}
 	}
-	p.Tags = validTags
-	p.Tags_enabled = make([]tag_enabled, 0)
-	for _, tag := range tags {
-		p.Tags_enabled = append(p.Tags_enabled, tag_enabled{Enabled: activeTags[tag.ID], Tag: &tag, BackRef: p})
+	p.Tags_enabled = make([]tag_enabled, len(tags))
+	for i := range tags {
+		p.Tags_enabled[i] = tag_enabled{Enabled: activeTags[tags[i].ID], Tag: &tags[i], BackRef: p}
 	}
 }
 
@@ -1277,12 +1320,21 @@ func main() {
 	router_tray := router.Group("/tray", auth_handler.Ensure_loggedin())
 	{
 		registerMessageEditing(router_tray, previewJobs)
+		registerTrayHistory(router_tray)
 		router_tray.GET("/", func(c *gin.Context) {
 			sub := get_uuid(c)
 			withProfileLock(sub, func() {
-				profileData := loadTrayProfile(sub, c.GetHeader("HX-Request") != "true", requestlog.FromGin(c))
+				logger := requestlog.FromGin(c)
+				started := time.Now()
+				profileData := loadTrayProfile(sub, c.GetHeader("HX-Request") != "true", logger)
 				previewJobs.enqueuePendingPreviews(sub, profileData)
-				c.HTML(http.StatusOK, "posts/tray.tmpl", render_all(profileData))
+				loadedAt := time.Now()
+				page := initialTrayPage(profileData, false)
+				preparedAt := time.Now()
+				c.HTML(http.StatusOK, "posts/tray.tmpl", page)
+				logger.Debug("tray page completed", "event", "tray.page.completed",
+					"load_us", loadedAt.Sub(started).Microseconds(), "view_us", preparedAt.Sub(loadedAt).Microseconds(),
+					"response_us", time.Since(preparedAt).Microseconds(), "rendered_count", len(page.Posts))
 			})
 		})
 		router_tray.GET("/doc-preview/:id", func(c *gin.Context) {
@@ -1328,6 +1380,7 @@ func main() {
 					c.String(http.StatusNotFound, "No such message")
 					return
 				}
+				preparePostView(&profile.Posts[p_idx], profile.Tags, profile.Tag_map)
 				err = profile.Posts[p_idx].toggle_tag_by_id(tag_uid)
 				if err != nil {
 					c.String(http.StatusBadRequest, "Unknown tag: %s", err.Error())
@@ -1388,7 +1441,7 @@ func main() {
 				profile_data := get_data(sub)
 				profile_data.Tag_edit = true
 				set_data(profile_data, sub)
-				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+				c.HTML(http.StatusOK, "base/tags.tmpl", profile_data)
 			})
 		})
 		router_tray.POST("/tag-apply", func(c *gin.Context) {
@@ -1413,7 +1466,7 @@ func main() {
 				profile := get_data(sub)
 				profile.Tag_edit = false
 				set_data(profile, sub)
-				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile))
+				c.HTML(http.StatusOK, "base/tags.tmpl", profile)
 			})
 		})
 		router_tray.POST("/tag-create", func(c *gin.Context) {
@@ -1429,14 +1482,14 @@ func main() {
 				profile_data.Tags = tagsFromMultiform(form, profile_data.Tags)
 				profile_data.Tag_edit = true
 				if len(profile_data.Tags) >= 32 {
-					c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+					c.HTML(http.StatusOK, "base/tags.tmpl", profile_data)
 					return
 				}
 				new_tag := tag{}.New()
 				new_tag.Nr = fmt.Sprint(len(profile_data.Tags))
 				profile_data.Tags = append(profile_data.Tags, new_tag)
 				profile_data.normalize_tag_nrs()
-				c.HTML(http.StatusOK, "base/tags.tmpl", render_all(profile_data))
+				c.HTML(http.StatusOK, "base/tags.tmpl", profile_data)
 			})
 		})
 
@@ -1516,6 +1569,7 @@ func main() {
 				}
 				set_data(profile, sub)
 				previewJobs.enqueuePendingPreviews(sub, profile)
+				preparePostView(message, profile.Tags, profile.Tag_map)
 				c.HTML(http.StatusOK, "base/doc-entry.tmpl", render_post(*message))
 			})
 		})

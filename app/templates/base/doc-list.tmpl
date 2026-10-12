@@ -91,11 +91,38 @@
             </div> -->
 
             <ul class="main-list" id="doc-list">
+            {{ template "base/doc-history-control.tmpl" . }}
             {{ range $doc := .Posts }}
                 {{ template "base/doc.tmpl" $doc }}
             {{ end }}
             </ul>
+            {{ if .RemovedPosts }}
+            <ul class="main-list" id="doc-undo-list" aria-label="Messages retained for Undo">
+            {{ range $doc := .RemovedPosts }}
+                {{ template "base/doc.tmpl" $doc }}
+            {{ end }}
+            </ul>
+            {{ end }}
         </div>
 
     </div>
+{{ end }}
+
+{{ define "base/doc-history-control.tmpl" }}
+    <li id="doc-history-control" class="doc-history-control">
+        {{ if .OlderCursor }}
+        <button id="doc-load-older" type="button" hx-get="/tray/history"
+            hx-vals='{"before":"{{ .OlderCursor }}"}' hx-target="#doc-history-control"
+            hx-swap="outerHTML focus-scroll:false" hx-sync="#tray-container:drop"
+            hx-disabled-elt="this">Load older messages</button>
+        {{ end }}
+        <span id="doc-history-status" role="status" aria-live="polite"></span>
+    </li>
+{{ end }}
+
+{{ define "base/doc-history.tmpl" }}
+    {{ template "base/doc-history-control.tmpl" . }}
+    {{ range $doc := .Posts }}
+        {{ template "base/doc.tmpl" $doc }}
+    {{ end }}
 {{ end }}
